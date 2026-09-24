@@ -13,7 +13,7 @@ author: Discernible IO
 license: MIT
 compatibility: >-
   Hermes Agent. Secrets in sibling hermes-agents-app. Host helper: idcp.
-  Optional peer stack: packages/hermes-identyclaw-*.
+  Optional peer stack: hermes-identyclaw-a2a + hermes-identyclaw-webhooks.
 metadata:
   hermes:
     tags: [identity, hola, near, passport, api, enrollment, verification, rodit, a2a, webhooks]
@@ -33,11 +33,11 @@ or paste JWTs into chat.
 
 | Path | Role |
 |------|------|
-| `hermes-agents/packages/hermes-identyclaw-auth` | Canonical CLI + sidecar (`deploy/idcp` → symlink) |
-| `hermes-agents/packages/hermes-identyclaw-a2a` | Opt-in A2A Passport overlay |
-| `hermes-agents/packages/hermes-identyclaw-webhooks` | Opt-in `/hooks/*` platform |
-| `hermes-agents-app/secrets/near-credentials/*.json` | NEAR key |
-| `hermes-agents-app/secrets/identyclaw/jwt-*.txt` | Cached JWT per API host |
+| `hermes-identyclaw-auth` | Canonical CLI + sidecar (`hermes-agents/deploy/idcp` → symlink) |
+| `hermes-identyclaw-a2a` | Opt-in A2A Passport overlay |
+| `hermes-identyclaw-webhooks` | Opt-in `/hooks/*` platform |
+| `hermes-agents-app/secrets/near-credentials/*.json` | NEAR key (or `$HERMES_HOME/secrets/…`) |
+| `…/secrets/identyclaw/jwt-*.txt` | Cached JWT per API host |
 | `hermes-agents-app/skills/identity/identyclaw/` | This skill |
 
 Inside the Hermes container, app dir is `/opt/data` and `idcp` is on PATH when installed.
