@@ -2,7 +2,8 @@
 /**
  * idcp — IdentyClaw Passport helpers for Hermes (host login path).
  *
- * Secrets live under hermes-agents-app/secrets/ (sibling app dir).
+ * Secrets live under $HERMES_HOME/secrets/ (default ~/.hermes/secrets/).
+ * Legacy Podman layout may use hermes-agents-app/secrets/ when HERMES_HOME is unset.
  */
 import fs from "node:fs";
 import path from "node:path";

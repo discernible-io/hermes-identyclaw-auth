@@ -6,14 +6,15 @@ description: >-
   discovering agents, A2A peer calls with Passport auth, RODiT-signed webhooks,
   or reading IdentyClaw API documentation. Requires a NEAR implicit account and
   Passport mint on api.identyclaw.com. On Hermes, call the host helper `idcp`
-  (secrets under hermes-agents-app/secrets/). Peer A2A/hooks need the opt-in
-  peer stack (`identyclaw-peer-install`) and auth sidecar.
-version: 1.2.0
+  (secrets under $HERMES_HOME/secrets/). Peer A2A/hooks need the auth sidecar
+  plus hermes-identyclaw-a2a and hermes-identyclaw-webhook plugins.
+version: 1.3.0
 author: Discernible IO
 license: MIT
 compatibility: >-
-  Hermes Agent. Secrets in sibling hermes-agents-app. Host helper: idcp.
-  Optional peer stack: hermes-identyclaw-a2a + hermes-identyclaw-webhooks.
+  Hermes Agent (stock). Secrets in $HERMES_HOME/secrets/. Host helper: idcp
+  (not a Hermes plugin). Optional peer plugins: identyclaw-a2a overlay +
+  identyclaw-webhooks.
 metadata:
   hermes:
     tags: [identity, hola, near, passport, api, enrollment, verification, rodit, a2a, webhooks]
@@ -29,18 +30,23 @@ Hermes uses the **host login** path for API sessions (`idcp`). Peer A2A and RODi
 `/hooks/*` use the **auth sidecar** + platform plugins — do not hand-roll Ed25519
 or paste JWTs into chat.
 
-## Layout (this host)
+`hermes-identyclaw-auth` is a **host package** (CLI + sidecar + this skill), not a
+Hermes plugin. There is no `plugin.yaml`.
+
+## Layout (stock Hermes)
 
 | Path | Role |
 |------|------|
-| `hermes-identyclaw-auth` | Canonical CLI + sidecar (`hermes-agents/deploy/idcp` → symlink) |
-| `hermes-identyclaw-a2a` | Opt-in A2A Passport overlay |
-| `hermes-identyclaw-webhooks` | Opt-in `/hooks/*` platform |
-| `hermes-agents-app/secrets/near-credentials/*.json` | NEAR key (or `$HERMES_HOME/secrets/…`) |
-| `…/secrets/identyclaw/jwt-*.txt` | Cached JWT per API host |
-| `hermes-agents-app/skills/identity/identyclaw/` | This skill |
+| `$HERMES_HOME/hermes-identyclaw-auth` | Host CLI + sidecar source |
+| `$HERMES_HOME/bin/idcp` | Symlink to `bin/idcp.mjs` |
+| `$HERMES_HOME/plugins/identyclaw-a2a` | IdentyClaw A2A overlay (plugin id `identyclaw-a2a`) |
+| `$HERMES_HOME/plugins/identyclaw-webhooks` | RODiT `/hooks/*` (plugin id `identyclaw-webhooks`) |
+| `$HERMES_HOME/secrets/near-credentials/*.json` | NEAR key |
+| `$HERMES_HOME/secrets/identyclaw/jwt-*.txt` | Cached JWT per API host |
+| `$HERMES_HOME/skills/.../identyclaw` | This skill (via `hermes skills install`) |
 
-Inside the Hermes container, app dir is `/opt/data` and `idcp` is on PATH when installed.
+Default `$HERMES_HOME` is `~/.hermes`. Podman wrappers may set `HERMES_APP_DIR` /
+`IDENTYCLAW_HOME` instead — `idcp` honors those first.
 
 ## Agent-facing ops (`idcp`)
 
@@ -55,24 +61,32 @@ Inside the Hermes container, app dir is `/opt/data` and `idcp` is on PATH when i
 
 ## Passport peer stack (opt-in)
 
-Operators enable peer interoperability (OpenClaw / other Passport agents):
-
 ```bash
-./hermes.sh identyclaw-peer-install
-# set A2A_PUBLIC_URL; JWT aud from RoditClient (NEAR credentials)
-./hermes.sh identyclaw-auth-start
-./hermes.sh start
+export HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+export PATH="$HERMES_HOME/bin:$PATH"
+
+# sidecar (systemd user unit preferred)
+bash "$HERMES_HOME/hermes-identyclaw-auth/scripts/install-sidecar-unit.sh"
+curl -fsS http://127.0.0.1:9910/health
+
+# plugins (repo hermes-identyclaw-webhook → plugin id identyclaw-webhooks)
+hermes plugins install discernible-io/hermes-identyclaw-a2a --no-enable
+hermes plugins disable platforms/a2a   # bundled A2A — required so overlay owns tools
+hermes plugins enable identyclaw-a2a --allow-tool-override
+
+hermes plugins install discernible-io/hermes-identyclaw-webhook --no-enable
+hermes plugins enable identyclaw-webhooks
 ```
+
+Or run the full playbook:  
+`bash $HERMES_HOME/hermes-identyclaw-auth/scripts/install-stock-hermes.sh`
 
 Then:
 
 - Inbound A2A uses Passport JWTs; identity = `token_id`
 - Peers login at `/api/login` + `/api/login/timestamp`
-- Signed webhooks: `/hooks/wake`, `/hooks/agent`
+- Signed webhooks: `/hooks/wake`, `/hooks/agent` (not Hermes HMAC `/webhooks/{route}`)
 - Tool: `send_rodit_webhook` (never invent signatures)
-- Hermes HMAC `/webhooks/{route}` stays separate
-
-Stock Hermes (no Podman wrapper): copy `packages/*` into `$HERMES_HOME/plugins/` + run the auth sidecar — see `packages/README.md`.
 
 ## Rules
 
@@ -84,9 +98,9 @@ Stock Hermes (no Podman wrapper): copy `packages/*` into `$HERMES_HOME/plugins/`
 
 ## Enrollment (once)
 
-Operators run this via `./hermes.sh setup` (or `./hermes.sh idcp-setup`). Low-level:
-
 ```bash
+export HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
+export PATH="$HERMES_HOME/bin:$PATH"
 idcp enroll
 # Human: https://purchase.identyclaw.com with account_id
 idcp ensure_session

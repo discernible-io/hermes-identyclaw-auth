@@ -6,7 +6,11 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
 
-/** App-dir root: hermes-agents-app (HERMES_APP_DIR / IDENTYCLAW_HOME / HERMES_HOME). */
+/**
+ * Secrets / app-dir root.
+ * Prefer IDENTYCLAW_HOME → HERMES_APP_DIR → HERMES_HOME → ~/.hermes (stock)
+ * → sibling hermes-agents-app (legacy Podman monorepo layout).
+ */
 export function appDir() {
   const raw =
     process.env.IDENTYCLAW_HOME ||
@@ -14,7 +18,12 @@ export function appDir() {
     process.env.HERMES_HOME ||
     "";
   if (raw) return path.resolve(raw);
-  // packages/hermes-identyclaw-auth/src/lib → repo root → sibling app
+  const home = process.env.HOME || "";
+  if (home) {
+    const stock = path.join(home, ".hermes");
+    if (fs.existsSync(stock)) return stock;
+  }
+  // Legacy: packages/hermes-identyclaw-auth → repo → sibling hermes-agents-app
   const pkgRoot = path.resolve(__dirname, "../..");
   const repoRoot = path.resolve(pkgRoot, "../..");
   return path.join(path.dirname(repoRoot), "hermes-agents-app");

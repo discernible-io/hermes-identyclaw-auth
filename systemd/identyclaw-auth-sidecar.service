@@ -1,0 +1,21 @@
+[Unit]
+Description=IdentyClaw Passport auth sidecar (localhost RODiT for Hermes A2A/webhooks)
+Documentation=https://github.com/discernible-io/hermes-identyclaw-auth
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Install script rewrites WorkingDirectory / ExecStart / EnvironmentFile for this host.
+WorkingDirectory=%h/.hermes/hermes-identyclaw-auth
+Environment=HERMES_HOME=%h/.hermes
+Environment=IDENTYCLAW_AUTH_PORT=9910
+EnvironmentFile=-%h/.hermes/.env
+# NEAR_CREDENTIALS_FILE_PATH must be set in ~/.hermes/.env (or override here).
+ExecStart=/usr/bin/env node ./bin/sidecar.mjs --port ${IDENTYCLAW_AUTH_PORT}
+Restart=on-failure
+RestartSec=3
+# Bind is 127.0.0.1 only (enforced by the sidecar).
+
+[Install]
+WantedBy=default.target
