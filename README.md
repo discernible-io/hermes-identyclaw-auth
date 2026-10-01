@@ -129,3 +129,13 @@ Shipped via `ctx.register_skill("identyclaw", …)` — load with
 
 - Node.js `>=22.19.0` and `npm` on PATH (or `IDENTYCLAW_NODE_BIN`)
 - Hermes Agent with plugins enabled
+
+<!-- discernible-io:product-links -->
+## Links
+
+Maintained by [Discernible](https://www.discernible.io/).
+
+- **Product:** [discernible.io](https://www.discernible.io/)
+- **Get a Passport:** [purchase.identyclaw.com](https://purchase.identyclaw.com) (buy once — no subscription)
+- **Verify HOLA:** [verify.identyclaw.com](https://verify.identyclaw.com)
+<!-- /discernible-io:product-links -->
