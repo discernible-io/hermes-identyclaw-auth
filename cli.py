@@ -99,7 +99,7 @@ def _handle(args) -> None:
                 "purchase": "https://purchase.identyclaw.com",
                 "next_human": (
                     "Paste account_id at https://purchase.identyclaw.com, then: "
-                    "hermes identyclaw ensure_session && hermes identyclaw me"
+                    "hermes identyclaw me"
                 ),
             }
         )

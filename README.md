@@ -24,7 +24,7 @@ Peer plugins:
 hermes plugins install discernible-io/hermes-identyclaw-auth   # Enable? y
 hermes identyclaw install-deps                                # npm ci + NEAR account if missing
 # Mint Passport at https://purchase.identyclaw.com (recipient = printed account_id)
-hermes identyclaw ensure_session && hermes identyclaw me
+hermes identyclaw me
 ```
 
 `install-deps` creates a NEAR implicit account under `$HERMES_HOME/secrets/near-credentials/`

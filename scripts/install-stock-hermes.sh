@@ -123,7 +123,7 @@ if [[ "$SKIP_ENROLL" -eq 0 ]]; then
     node "$AUTH_ROOT/bin/idcp.mjs" enroll || true
   fi
   echo "If this is a new account, buy a Passport at https://purchase.identyclaw.com"
-  echo "with the account_id printed above, then re-run: hermes identyclaw ensure_session && hermes identyclaw me"
+  echo "with the account_id printed above, then: hermes identyclaw me"
   hermes identyclaw ensure_session 2>/dev/null \
     || node "$AUTH_ROOT/bin/idcp.mjs" ensure_session \
     || echo "ensure_session failed — mint Passport then retry"

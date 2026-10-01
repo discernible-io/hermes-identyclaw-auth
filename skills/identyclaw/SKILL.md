@@ -43,13 +43,13 @@ Load this skill as `skill_view("identyclaw-auth:identyclaw")`.
 
 ## Agent-facing ops
 
-Prefer tools (`identyclaw_ensure_session`, `identyclaw_me`, …) or:
+Prefer tools (`identyclaw_me`, …) or:
 
 | Op | Command | Returns |
 |----|---------|---------|
-| ensure_session | `hermes identyclaw ensure_session [--force] [--base URL]` | metadata only — **never** full JWT |
+| me | `hermes identyclaw me` | Passport identity (lazy-logs in) |
+| ensure_session | `hermes identyclaw ensure_session [--force] [--base URL]` | advanced: force / federated / debug — metadata only, **never** full JWT |
 | list_sessions | `hermes identyclaw list_sessions` | cached hosts; no JWTs |
-| me | `hermes identyclaw me` | Passport identity |
 | request | `hermes identyclaw request METHOD /api/path [--body JSON]` | host injects Bearer |
 | create_hola | `hermes identyclaw create_hola [--recipient MUNDO\|peerTokenId]` | HOLA string |
 | verify_hola | `hermes identyclaw verify_hola --hola '…' [--expected MUNDO]` | verify JSON |
@@ -94,7 +94,6 @@ Then:
 hermes plugins install discernible-io/hermes-identyclaw-auth
 hermes identyclaw install-deps
 # Human: https://purchase.identyclaw.com with the printed account_id
-hermes identyclaw ensure_session
 hermes identyclaw me
 ```
 
@@ -104,14 +103,14 @@ id without changing keys: `hermes identyclaw enroll`.
 ## Day-to-day
 
 ```bash
-hermes identyclaw ensure_session
+hermes identyclaw me
 hermes identyclaw verify_hola --hola 'HOLA/…'
 hermes identyclaw create_hola --recipient MUNDO
 hermes identyclaw request GET /api/agents
 hermes identyclaw request GET /api/identity/token/<peerTokenId>/full
 ```
 
-Federated peers (no API key — remint a JWT for that host):
+Federated peers / force remint (advanced — `ensure_session`):
 
 ```bash
 hermes identyclaw ensure_session --base https://api.lastcradle.io

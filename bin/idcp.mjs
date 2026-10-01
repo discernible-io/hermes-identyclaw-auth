@@ -83,7 +83,7 @@ async function cmdEnroll() {
       files: existing,
       account_id,
       purchase: "https://purchase.identyclaw.com",
-      next: "Human: mint Passport at https://purchase.identyclaw.com with account_id, then: idcp ensure_session",
+      next: "Human: mint Passport at https://purchase.identyclaw.com with account_id, then: hermes identyclaw me",
     });
     return;
   }
@@ -114,7 +114,7 @@ async function cmdEnroll() {
         files: [path.basename(written.filePath || written.path || "")],
         account_id: written.implicit_account_id || account.implicit_account_id,
         next_human:
-          "Purchase Passport at https://purchase.identyclaw.com with account_id, then: idcp ensure_session && idcp me",
+          "Purchase Passport at https://purchase.identyclaw.com with account_id, then: hermes identyclaw me",
       });
       return;
     } catch (err) {
@@ -159,7 +159,7 @@ async function cmdEnroll() {
     files,
     account_id,
     next_human:
-      "Purchase Passport at https://purchase.identyclaw.com with account_id, then: idcp ensure_session && idcp me",
+      "Purchase Passport at https://purchase.identyclaw.com with account_id, then: hermes identyclaw me",
   });
 }
 
