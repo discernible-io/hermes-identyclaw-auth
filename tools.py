@@ -16,7 +16,8 @@ def _dumps(payload: Any) -> str:
 
 
 def identyclaw_enroll(args: dict, **kwargs) -> str:
-    return _dumps(node_bridge.run_idcp(["enroll"]))
+    # quiet=True: agent tool returns JSON; human banner is for install-deps / CLI enroll.
+    return _dumps(node_bridge.ensure_enrolled(quiet=True))
 
 
 def identyclaw_ensure_session(args: dict, **kwargs) -> str:

@@ -96,15 +96,21 @@ def _handle(args) -> None:
                 "root": str(node_bridge.PLUGIN_ROOT),
                 "enroll": enroll,
                 "account_id": account_id,
+                "credentials": enroll.get("credentials") if isinstance(enroll, dict) else None,
                 "purchase": "https://purchase.identyclaw.com",
                 "next_human": (
-                    "Paste account_id at https://purchase.identyclaw.com, then: "
-                    "hermes identyclaw me"
+                    "Paste ONLY the account_id printed above at "
+                    "https://purchase.identyclaw.com — ignore other *.json files "
+                    "under near-credentials/. Then: hermes identyclaw me"
                 ),
             }
         )
         # npm deps are the hard requirement; enroll is best-effort (idempotent).
         sys.exit(0)
+
+    if cmd == "enroll":
+        # Same path as install-deps so the account_id banner is unmistakable.
+        sys.exit(_print(node_bridge.ensure_enrolled()))
 
     if cmd == "status":
         payload = node_bridge.sidecar_status()
@@ -155,7 +161,7 @@ def _handle(args) -> None:
             argv.extend(["--expected", args.expected])
         if getattr(args, "base", None):
             argv.extend(["--base", args.base])
-    elif cmd in {"enroll", "list_sessions"}:
+    elif cmd in {"list_sessions"}:
         pass
     else:
         print(f"Unknown command: {cmd}", file=sys.stderr)

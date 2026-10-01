@@ -90,6 +90,9 @@ function validateNearCredentialsOutputDir(outputDir, options = {}) {
  * Write gennearaccount-compatible JSON to `<dir>/<implicit_account_id>.json`.
  * Sets directory mode 0700 and file mode 0600 when supported.
  *
+ * When `force` is false, refuses if the target file OR any other `*.json` already
+ * exists in the directory — operators should keep exactly one active account.
+ *
  * @param {string} outputDir
  * @param {{ force?: boolean, allowedOutputDirs?: string[], seed?: Uint8Array }} [options]
  * @returns {{ implicit_account_id: string, public_key: string, filePath: string }}
@@ -97,18 +100,28 @@ function validateNearCredentialsOutputDir(outputDir, options = {}) {
 function writeNearCredentialsFile(outputDir, options = {}) {
   const { force = false, allowedOutputDirs, seed } = options;
   const dir = validateNearCredentialsOutputDir(outputDir, { allowedOutputDirs });
-  const credentials = generateNearImplicitAccount(seed);
-  const filePath = path.join(dir, `${credentials.implicit_account_id}.json`);
-
-  if (!force && fs.existsSync(filePath)) {
-    throw new Error(`Refusing to overwrite existing credentials file: ${filePath}`);
-  }
 
   fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   try {
     fs.chmodSync(dir, 0o700);
   } catch {
     // Best effort — some filesystems ignore mode on mkdir/chmod.
+  }
+
+  if (!force) {
+    const existing = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
+    if (existing.length > 0) {
+      throw new Error(
+        `Refusing to create a second NEAR account; already present: ${existing.join(", ")}`
+      );
+    }
+  }
+
+  const credentials = generateNearImplicitAccount(seed);
+  const filePath = path.join(dir, `${credentials.implicit_account_id}.json`);
+
+  if (!force && fs.existsSync(filePath)) {
+    throw new Error(`Refusing to overwrite existing credentials file: ${filePath}`);
   }
 
   const payload = {

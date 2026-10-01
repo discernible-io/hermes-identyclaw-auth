@@ -123,7 +123,9 @@ if [[ "$SKIP_ENROLL" -eq 0 ]]; then
     node "$AUTH_ROOT/bin/idcp.mjs" enroll || true
   fi
   echo "If this is a new account, buy a Passport at https://purchase.identyclaw.com"
-  echo "with the account_id printed above, then: hermes identyclaw me"
+  echo "Paste ONLY the account_id printed by install-deps / enroll above —"
+  echo "ignore other *.json files under near-credentials/ (prior-install leftovers)."
+  echo "Then: hermes identyclaw me"
   hermes identyclaw ensure_session 2>/dev/null \
     || node "$AUTH_ROOT/bin/idcp.mjs" ensure_session \
     || echo "ensure_session failed — mint Passport then retry"
@@ -151,9 +153,24 @@ if [[ -n "$A2A_PUBLIC_URL_ARG" ]]; then
   fi
 fi
 
+# Prefer already-pinned path (.active or sole file). Never invent a second account.
+ACTIVE_MARK="$HERMES_HOME/secrets/near-credentials/.active"
 mapfile -t creds < <(compgen -G "$HERMES_HOME/secrets/near-credentials/*.json" || true)
 if [[ ${#creds[@]} -ge 1 ]] && ! grep -q '^NEAR_CREDENTIALS_FILE_PATH=' "$ENV_FILE" 2>/dev/null; then
-  echo "NEAR_CREDENTIALS_FILE_PATH=${creds[0]}" >>"$ENV_FILE"
+  CHOSEN=""
+  if [[ -f "$ACTIVE_MARK" ]]; then
+    base="$(tr -d '[:space:]' <"$ACTIVE_MARK")"
+    [[ -n "$base" && -f "$HERMES_HOME/secrets/near-credentials/$base" ]] \
+      && CHOSEN="$HERMES_HOME/secrets/near-credentials/$base"
+  fi
+  if [[ -z "$CHOSEN" ]]; then
+    CHOSEN="${creds[0]}"
+  fi
+  echo "NEAR_CREDENTIALS_FILE_PATH=$CHOSEN" >>"$ENV_FILE"
+  if [[ ${#creds[@]} -gt 1 ]]; then
+    echo "Note: ${#creds[@]} credential files under near-credentials/ — using $CHOSEN"
+    echo "Paste ONLY the account_id from install-deps/enroll; ignore other files."
+  fi
 fi
 
 # --- 3) Sidecar --------------------------------------------------------------

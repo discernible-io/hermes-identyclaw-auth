@@ -24,9 +24,12 @@ requires_env: []
 optional_env:
   - name: NEAR_CREDENTIALS_FILE_PATH
     description: >
-      Path to NEAR credentials JSON under $HERMES_HOME/secrets/near-credentials/
-      (auto-created by `hermes identyclaw install-deps` when missing; `enroll`
-      reprints the id). Required for the sidecar / peer stack.
+      Path to the live NEAR credentials JSON under
+      $HERMES_HOME/secrets/near-credentials/ (auto-created by
+      `hermes identyclaw install-deps` when missing; `enroll` reprints the id).
+      If multiple *.json files exist from prior installs, set this to the path
+      printed by install-deps/enroll — do not guess from the directory listing.
+      Required for the sidecar / peer stack.
     prompt: "NEAR credentials JSON path (leave blank to auto-detect after install-deps)"
     password: false
   - name: IDENTYCLAW_AUTH_PORT

@@ -120,17 +120,67 @@ def list_near_credential_files() -> list[Path]:
     return sorted(cred_dir.glob("*.json"))
 
 
-def ensure_near_credentials_env() -> Optional[str]:
-    """Populate NEAR_CREDENTIALS_FILE_PATH from secrets layout when unset."""
+def active_near_credentials_marker() -> Path:
+    return near_credentials_dir() / ".active"
+
+
+def pin_active_near_credentials(credentials_path: str) -> Optional[str]:
+    """Write near-credentials/.active so leftover files are not mistaken for the live key."""
+    path = (credentials_path or "").strip()
+    if not path:
+        return None
+    try:
+        full = Path(path).expanduser().resolve()
+        if not full.is_file() or full.suffix != ".json":
+            return None
+        cred_dir = near_credentials_dir()
+        cred_dir.mkdir(parents=True, exist_ok=True)
+        marker = active_near_credentials_marker()
+        marker.write_text(f"{full.name}\n", encoding="utf-8")
+        try:
+            os.chmod(marker, 0o600)
+        except OSError:
+            pass
+        return str(full)
+    except OSError as exc:
+        logger.warning("identyclaw-auth: could not pin .active credentials: %s", exc)
+        return None
+
+
+def resolve_active_near_credentials() -> Optional[str]:
+    """Pick the canonical credentials file (env → .active → sole/sorted file)."""
     existing = (os.getenv("NEAR_CREDENTIALS_FILE_PATH") or "").strip()
     if existing:
-        return existing
+        path = Path(existing).expanduser()
+        if path.is_file():
+            return str(path.resolve())
+
     candidates = list_near_credential_files()
     if not candidates:
         return None
-    chosen = str(candidates[0])
+
+    marker = active_near_credentials_marker()
+    if marker.is_file():
+        try:
+            name = marker.read_text(encoding="utf-8").strip()
+            if name:
+                pinned = near_credentials_dir() / (name if name.endswith(".json") else f"{name}.json")
+                if pinned.is_file():
+                    return str(pinned.resolve())
+        except OSError:
+            pass
+
+    return str(candidates[0].resolve())
+
+
+def ensure_near_credentials_env() -> Optional[str]:
+    """Populate NEAR_CREDENTIALS_FILE_PATH from secrets layout when unset."""
+    chosen = resolve_active_near_credentials()
+    if not chosen:
+        return None
     os.environ["NEAR_CREDENTIALS_FILE_PATH"] = chosen
     os.environ.setdefault("RODIT_NEAR_CREDENTIALS_SOURCE", "file")
+    pin_active_near_credentials(chosen)
     return chosen
 
 
@@ -162,31 +212,79 @@ def seed_near_credentials_into_dotenv(credentials_path: str) -> bool:
         return False
 
 
+_PURCHASE_URL = "https://purchase.identyclaw.com"
+_PASTE_HINT = (
+    "Paste ONLY this account_id at the purchase page — "
+    "ignore other *.json files under near-credentials/ "
+    "(leftovers from prior installs are unsafe to mint to)."
+)
+
+
+def _print_account_id_banner(account_id: str, *, credentials: Optional[str] = None, already: bool = False) -> None:
+    """Make the mint recipient unmistakable on first-run / reprint."""
+    label = "already present" if already else "paste at purchase"
+    print("")
+    print("=" * 72)
+    print(f"  NEAR account_id ({label})")
+    print(f"  {_PASTE_HINT}")
+    print("-" * 72)
+    print(f"  {account_id}")
+    print("=" * 72)
+    print(f"  purchase: {_PURCHASE_URL}")
+    if credentials:
+        print(f"  credentials (NEAR_CREDENTIALS_FILE_PATH): {credentials}")
+    extras = list_near_credential_files()
+    if len(extras) > 1:
+        print(
+            f"  note: {len(extras)} credential files in {near_credentials_dir()} — "
+            "use only the account_id / path printed above."
+        )
+    print("  Keep the credentials JSON private (0600). Never paste a private key or JWT.")
+    print("")
+
+
 def ensure_enrolled(*, quiet: bool = False) -> dict[str, Any]:
     """Create a NEAR implicit account when none is present (idempotent).
 
     Used by ``install-deps`` and best-effort plugin load so operators do not need
     a separate ``hermes identyclaw enroll`` step before purchase.
+    Never creates a second account when any ``*.json`` already exists.
     """
+    candidates = list_near_credential_files()
     existing = ensure_near_credentials_env()
-    if existing:
+    if existing or candidates:
+        # Prefer the pinned/env path; fall back to first candidate without creating.
+        credentials = existing or str(candidates[0].resolve())
+        if not existing:
+            os.environ["NEAR_CREDENTIALS_FILE_PATH"] = credentials
+            os.environ.setdefault("RODIT_NEAR_CREDENTIALS_SOURCE", "file")
+            pin_active_near_credentials(credentials)
         account_id = None
         try:
-            raw = json.loads(Path(existing).read_text(encoding="utf-8"))
+            raw = json.loads(Path(credentials).read_text(encoding="utf-8"))
             account_id = raw.get("account_id") or raw.get("implicit_account_id")
         except (OSError, json.JSONDecodeError, TypeError):
             pass
-        payload = {
+        payload: dict[str, Any] = {
             "ok": True,
             "already": True,
             "account_id": account_id,
-            "credentials": existing,
+            "credentials": credentials,
             "near_credentials_dir": str(near_credentials_dir()),
-            "purchase": "https://purchase.identyclaw.com",
+            "files": [p.name for p in candidates] if candidates else [Path(credentials).name],
+            "purchase": _PURCHASE_URL,
+            "next_human": (
+                f"{_PASTE_HINT} Then: hermes identyclaw me"
+            ),
         }
-        seed_near_credentials_into_dotenv(existing)
+        if len(payload["files"]) > 1:
+            payload["warning"] = (
+                f"Multiple credential files present ({len(payload['files'])}). "
+                "Use only the printed account_id / credentials path."
+            )
+        seed_near_credentials_into_dotenv(credentials)
         if not quiet and account_id:
-            print(f"  NEAR account already present: {account_id}")
+            _print_account_id_banner(account_id, credentials=credentials, already=True)
         return payload
 
     if not deps_installed():
@@ -203,17 +301,31 @@ def ensure_enrolled(*, quiet: bool = False) -> dict[str, Any]:
         return {"ok": False, "error": "enroll returned unexpected payload", "raw": payload}
 
     credentials = ensure_near_credentials_env()
+    if not credentials and payload.get("credentials"):
+        credentials = str(payload["credentials"])
+        os.environ["NEAR_CREDENTIALS_FILE_PATH"] = credentials
+        os.environ.setdefault("RODIT_NEAR_CREDENTIALS_SOURCE", "file")
+        pin_active_near_credentials(credentials)
     if credentials:
         payload["credentials"] = credentials
         seed_near_credentials_into_dotenv(credentials)
         os.environ["NEAR_CREDENTIALS_FILE_PATH"] = credentials
         os.environ.setdefault("RODIT_NEAR_CREDENTIALS_SOURCE", "file")
+        pin_active_near_credentials(credentials)
 
     account_id = payload.get("account_id")
+    payload.setdefault("purchase", _PURCHASE_URL)
+    payload.setdefault(
+        "next_human",
+        f"{_PASTE_HINT} Then: hermes identyclaw me",
+    )
     if not quiet:
         if payload.get("ok") and account_id:
-            print(f"  NEAR account_id (paste at purchase): {account_id}")
-            print("  Keep the credentials JSON private (0600). Never paste a private key or JWT.")
+            _print_account_id_banner(
+                str(account_id),
+                credentials=credentials or payload.get("credentials"),
+                already=False,
+            )
         elif not payload.get("ok"):
             print(f"  Warning: enroll failed: {payload.get('error') or payload}")
     return payload

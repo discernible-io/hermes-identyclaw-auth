@@ -36,7 +36,8 @@ hand-roll Ed25519 or paste JWTs into chat.
 | Plugin `identyclaw-auth` | CLI + tools + skill + Node sidecar |
 | Plugin `identyclaw-a2a` | Opt-in A2A Passport overlay |
 | Plugin `identyclaw-webhooks` | Opt-in `/hooks/*` platform |
-| `$HERMES_HOME/secrets/near-credentials/*.json` | NEAR key |
+| `$HERMES_HOME/secrets/near-credentials/*.json` | NEAR key (one active) |
+| `$HERMES_HOME/secrets/near-credentials/.active` | Basename of the live key |
 | `$HERMES_HOME/secrets/identyclaw/jwt-*.txt` | Cached JWT per API host |
 
 Load this skill as `skill_view("identyclaw-auth:identyclaw")`.
@@ -93,12 +94,15 @@ Then:
 ```bash
 hermes plugins install discernible-io/hermes-identyclaw-auth
 hermes identyclaw install-deps
-# Human: https://purchase.identyclaw.com with the printed account_id
+# Human: https://purchase.identyclaw.com — paste ONLY the printed account_id
+# (ignore other *.json under near-credentials/; leftovers from prior installs)
 hermes identyclaw me
 ```
 
-`install-deps` creates the NEAR implicit account when none is present. To reprint the
-id without changing keys: `hermes identyclaw enroll`.
+`install-deps` creates exactly one NEAR implicit account when none is present and
+prints `account_id` unmistakably. To reprint the id without changing keys:
+`hermes identyclaw enroll`. Never invent an account_id from a filename in that
+directory — use only what install-deps / enroll printed.
 
 ## Day-to-day
 

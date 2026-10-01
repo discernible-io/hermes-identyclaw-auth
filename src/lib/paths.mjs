@@ -77,9 +77,8 @@ export function ensureSecretsLayout() {
 /** Resolve NEAR credentials file path for RoditClient (NEAR_CREDENTIALS_FILE_PATH). */
 export function resolveNearCredentialsFilePath(credentialsPath = null) {
   if (credentialsPath) return path.resolve(credentialsPath);
-  if (process.env.NEAR_CREDENTIALS_FILE_PATH?.trim()) {
-    return path.resolve(process.env.NEAR_CREDENTIALS_FILE_PATH.trim());
-  }
+  const active = resolveActiveNearCredentialsPath(null);
+  if (active) return active;
   try {
     const creds = loadNearCredentials(null);
     return creds.path && creds.path !== "(env)" ? creds.path : null;
@@ -116,7 +115,62 @@ export function ensureRoditCredentialEnv(credentialsPath = null) {
   return filePath;
 }
 
-/** Load first *.json in near-credentials, or env / explicit path. */
+/** List sorted *.json basenames under near-credentials. */
+export function listNearCredentialFiles(dir = nearCredentialsDir()) {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir).filter((f) => f.endsWith(".json")).sort();
+}
+
+/**
+ * Pin the active credentials file via near-credentials/.active (basename).
+ * Consumers and enroll reprints prefer this over leftover files from prior installs.
+ */
+export function pinActiveNearCredentials(credentialsFilePath) {
+  if (!credentialsFilePath || credentialsFilePath === "(env)") return null;
+  const full = path.resolve(credentialsFilePath);
+  const dir = path.dirname(full);
+  const base = path.basename(full);
+  if (!base.endsWith(".json") || !fs.existsSync(full)) return null;
+  try {
+    fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    fs.writeFileSync(path.join(dir, ".active"), `${base}\n`, {
+      encoding: "utf8",
+      mode: 0o600,
+    });
+  } catch {
+    return null;
+  }
+  return full;
+}
+
+/**
+ * Resolve which credentials JSON is canonical.
+ * Order: explicit path → NEAR_CREDENTIALS_FILE_PATH → .active → sole file → sorted first.
+ */
+export function resolveActiveNearCredentialsPath(credentialsPath = null) {
+  if (credentialsPath) {
+    const resolved = path.resolve(credentialsPath);
+    return fs.existsSync(resolved) ? resolved : null;
+  }
+  if (process.env.NEAR_CREDENTIALS_FILE_PATH?.trim()) {
+    const resolved = path.resolve(process.env.NEAR_CREDENTIALS_FILE_PATH.trim());
+    if (fs.existsSync(resolved)) return resolved;
+  }
+  const dir = nearCredentialsDir();
+  const files = listNearCredentialFiles(dir);
+  if (files.length === 0) return null;
+  const active = path.join(dir, ".active");
+  if (fs.existsSync(active)) {
+    const name = fs.readFileSync(active, "utf8").trim();
+    if (files.includes(name) || files.includes(`${name}.json`)) {
+      const chosen = files.includes(name) ? name : `${name}.json`;
+      return path.join(dir, chosen);
+    }
+  }
+  return path.join(dir, files[0]);
+}
+
+/** Load credentials from env / explicit path / active near-credentials JSON. */
 export function loadNearCredentials(credentialsPath) {
   if (credentialsPath) {
     const raw = JSON.parse(fs.readFileSync(credentialsPath, "utf8"));
@@ -133,19 +187,14 @@ export function loadNearCredentials(credentialsPath) {
   if (!fs.existsSync(dir)) {
     throw new Error(`No credentials dir: ${dir}`);
   }
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
+  const files = listNearCredentialFiles(dir);
   if (files.length === 0) {
     throw new Error(`No *.json in ${dir} — run: idcp enroll`);
   }
-  const active = path.join(dir, ".active");
-  let chosen = files[0];
-  if (fs.existsSync(active)) {
-    const name = fs.readFileSync(active, "utf8").trim();
-    if (files.includes(name) || files.includes(`${name}.json`)) {
-      chosen = files.includes(name) ? name : `${name}.json`;
-    }
+  const full = resolveActiveNearCredentialsPath(null);
+  if (!full || !fs.existsSync(full)) {
+    throw new Error(`No *.json in ${dir} — run: idcp enroll`);
   }
-  const full = path.join(dir, chosen);
   return normalizeCreds(JSON.parse(fs.readFileSync(full, "utf8")), full);
 }
 

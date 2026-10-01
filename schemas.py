@@ -8,8 +8,10 @@ ENROLL = {
         "Create IdentyClaw secrets layout under $HERMES_HOME/secrets and ensure a "
         "NEAR implicit account exists for Passport minting. Prefer running "
         "`hermes identyclaw install-deps` after plugin install (auto-enrolls when "
-        "missing). This tool reprints account_id without overwriting. Returns "
-        "account_id and next human step (purchase portal). Never invent credentials."
+        "missing). Creates at most one account; reprints account_id without "
+        "overwriting. Tell the human to paste ONLY the returned account_id at "
+        "https://purchase.identyclaw.com and ignore other *.json files under "
+        "near-credentials/. Never invent credentials from filenames."
     ),
     "parameters": {"type": "object", "properties": {}, "required": []},
 }

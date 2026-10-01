@@ -14,6 +14,9 @@ import {
   ensureSecretsLayout,
   defaultBaseUrl,
   loadHolaClient,
+  listNearCredentialFiles,
+  pinActiveNearCredentials,
+  resolveActiveNearCredentialsPath,
 } from "../src/lib/paths.mjs";
 import {
   ensureSession,
@@ -22,6 +25,11 @@ import {
   me,
 } from "../src/lib/session.mjs";
 import { createHolaLine, verifyHolaLine } from "../src/lib/hola.mjs";
+
+const PURCHASE_URL = "https://purchase.identyclaw.com";
+const PASTE_HINT =
+  "Paste ONLY the account_id printed by install-deps / enroll at the purchase page — " +
+  "ignore other *.json files under near-credentials/ (leftovers from prior installs).";
 
 function print(obj) {
   console.log(JSON.stringify(obj, null, 2));
@@ -61,30 +69,55 @@ function parseArgs(argv) {
   return args;
 }
 
+function readAccountId(filePath) {
+  try {
+    const raw = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return raw.account_id || raw.implicit_account_id || null;
+  } catch {
+    return null;
+  }
+}
+
+function enrollResult({ already, method, credentialsPath, files, extra = {} }) {
+  const account_id = credentialsPath ? readAccountId(credentialsPath) : null;
+  const multi = files.length > 1;
+  return {
+    ok: true,
+    already: !!already,
+    method: method || undefined,
+    near_credentials_dir: nearCredentialsDir(),
+    files,
+    credentials: credentialsPath || undefined,
+    account_id,
+    purchase: PURCHASE_URL,
+    warning: multi
+      ? `Multiple credential files present (${files.length}). Using the printed account_id / credentials path only.`
+      : undefined,
+    next_human: `${PASTE_HINT} Then: hermes identyclaw me`,
+    ...extra,
+  };
+}
+
 async function cmdEnroll() {
   ensureSecretsLayout();
   const dir = nearCredentialsDir();
-  const existing = fs.existsSync(dir)
-    ? fs.readdirSync(dir).filter((f) => f.endsWith(".json"))
-    : [];
+  const existing = listNearCredentialFiles(dir);
 
   if (existing.length > 0) {
-    let account_id = null;
-    try {
-      const raw = JSON.parse(fs.readFileSync(path.join(dir, existing[0]), "utf8"));
-      account_id = raw.account_id || raw.implicit_account_id || null;
-    } catch {
-      /* ignore */
+    const credentialsPath = resolveActiveNearCredentialsPath(null);
+    if (credentialsPath) {
+      pinActiveNearCredentials(credentialsPath);
+      if (!process.env.NEAR_CREDENTIALS_FILE_PATH?.trim()) {
+        process.env.NEAR_CREDENTIALS_FILE_PATH = credentialsPath;
+      }
     }
-    print({
-      ok: true,
-      already: true,
-      near_credentials_dir: dir,
-      files: existing,
-      account_id,
-      purchase: "https://purchase.identyclaw.com",
-      next: "Human: mint Passport at https://purchase.identyclaw.com with account_id, then: hermes identyclaw me",
-    });
+    print(
+      enrollResult({
+        already: true,
+        credentialsPath,
+        files: existing,
+      })
+    );
     return;
   }
 
@@ -104,18 +137,19 @@ async function cmdEnroll() {
 
   if (!ran) {
     try {
-      const { generateNearImplicitAccount, writeNearCredentialsFile } = loadHolaClient();
-      const account = generateNearImplicitAccount();
+      const { writeNearCredentialsFile } = loadHolaClient();
       const written = writeNearCredentialsFile(dir, { force: false });
-      print({
-        ok: true,
-        method: "hola-client",
-        near_credentials_dir: dir,
-        files: [path.basename(written.filePath || written.path || "")],
-        account_id: written.implicit_account_id || account.implicit_account_id,
-        next_human:
-          "Purchase Passport at https://purchase.identyclaw.com with account_id, then: hermes identyclaw me",
-      });
+      const credentialsPath = written.filePath;
+      pinActiveNearCredentials(credentialsPath);
+      process.env.NEAR_CREDENTIALS_FILE_PATH = credentialsPath;
+      print(
+        enrollResult({
+          already: false,
+          method: "hola-client",
+          credentialsPath,
+          files: [path.basename(credentialsPath)],
+        })
+      );
       return;
     } catch (err) {
       print({
@@ -125,7 +159,7 @@ async function cmdEnroll() {
         near_credentials_dir: dir,
         install:
           "Build ~/gennearaccount (make -C src) or install the .deb, then: idcp enroll",
-        purchase: "https://purchase.identyclaw.com",
+        purchase: PURCHASE_URL,
       });
       process.exit(1);
     }
@@ -141,26 +175,23 @@ async function cmdEnroll() {
     process.exit(1);
   }
 
-  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".json"));
-  let account_id = null;
-  if (files[0]) {
-    try {
-      const raw = JSON.parse(fs.readFileSync(path.join(dir, files[0]), "utf8"));
-      account_id = raw.account_id || raw.implicit_account_id;
-    } catch {
-      /* ignore */
-    }
+  const files = listNearCredentialFiles(dir);
+  // gennearaccount may leave extras; pin exactly one active file.
+  const credentialsPath =
+    resolveActiveNearCredentialsPath(null) ||
+    (files[0] ? path.join(dir, files[0]) : null);
+  if (credentialsPath) {
+    pinActiveNearCredentials(credentialsPath);
+    process.env.NEAR_CREDENTIALS_FILE_PATH = credentialsPath;
   }
-
-  print({
-    ok: true,
-    method: ran.bin,
-    near_credentials_dir: dir,
-    files,
-    account_id,
-    next_human:
-      "Purchase Passport at https://purchase.identyclaw.com with account_id, then: hermes identyclaw me",
-  });
+  print(
+    enrollResult({
+      already: false,
+      method: ran.bin,
+      credentialsPath,
+      files,
+    })
+  );
 }
 
 export async function runCli(argv = process.argv.slice(2)) {

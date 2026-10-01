@@ -23,13 +23,18 @@ Peer plugins:
 ```bash
 hermes plugins install discernible-io/hermes-identyclaw-auth   # Enable? y
 hermes identyclaw install-deps                                # npm ci + NEAR account if missing
-# Mint Passport at https://purchase.identyclaw.com (recipient = printed account_id)
+# Mint Passport at https://purchase.identyclaw.com — paste ONLY the printed account_id
 hermes identyclaw me
 ```
 
-`install-deps` creates a NEAR implicit account under `$HERMES_HOME/secrets/near-credentials/`
-when none is present and prints `account_id`. Re-running is safe (does not overwrite).
+`install-deps` creates **exactly one** NEAR implicit account under
+`$HERMES_HOME/secrets/near-credentials/` when none is present and prints
+`account_id` in a banner. Re-running is safe (does not overwrite / does not mint a second key).
 Manual reprint: `hermes identyclaw enroll`.
+
+**Purchase page:** paste only the `account_id` printed by `install-deps` or
+`hermes identyclaw enroll`. Ignore other `*.json` files in that directory
+(leftovers from prior installs); minting to the wrong key wastes the Passport.
 
 Optional docs MCP: `hermes mcp add IdentyClawDocs --url https://api.identyclaw.com/mcp`
 
@@ -96,9 +101,10 @@ Binds **127.0.0.1** only. Never prints full JWTs from the CLI.
 
 Layout under `$HERMES_HOME` (or `HERMES_APP_DIR` / `IDENTYCLAW_HOME`):
 
-- `secrets/near-credentials/*.json` — NEAR key (from install-deps / enroll)
+- `secrets/near-credentials/*.json` — NEAR key (from install-deps / enroll; keep one active)
+- `secrets/near-credentials/.active` — basename of the live credentials file
 - `secrets/identyclaw/jwt-*.txt` — cached host JWTs
-- `NEAR_CREDENTIALS_FILE_PATH` — declared as `optional_env` (install may prompt)
+- `NEAR_CREDENTIALS_FILE_PATH` — declared as `optional_env` (install may prompt; pins the live key)
 
 Minimal `$HERMES_HOME/.env`:
 
