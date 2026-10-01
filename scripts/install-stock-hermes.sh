@@ -151,20 +151,30 @@ if ! curl -fsS "http://127.0.0.1:${IDENTYCLAW_AUTH_PORT:-9910}/health" >/dev/nul
 fi
 
 # --- 5) A2A platform plugin --------------------------------------------------
-log "Install IdentyClaw A2A overlay (hermes plugins install)"
-# Plugin id must be identyclaw-a2a (unique). Bundled A2A is platforms/a2a
+# Stock Hermes flow (docs): install owner/repo → enable (opt-in) → capabilities.
+# Scripted form uses --no-enable / --enable as documented; we install disabled,
+# disable bundled platforms/a2a, then enable with tools.override grant.
+# Plugin id must be identyclaw-a2a (unique). Bundled key is platforms/a2a
 # (yaml name a2a-platform) — enabling "a2a-platform" would hit the bundled copy.
-hermes plugins install discernible-io/hermes-identyclaw-a2a --no-enable --force \
-  || hermes plugins install discernible-io/hermes-identyclaw-a2a --no-enable
+log "Install IdentyClaw A2A overlay (hermes plugins install owner/repo)"
+if [[ -d "$HERMES_HOME/plugins/identyclaw-a2a" ]]; then
+  hermes plugins install discernible-io/hermes-identyclaw-a2a --no-enable --force
+else
+  hermes plugins install discernible-io/hermes-identyclaw-a2a --no-enable
+fi
 hermes plugins disable platforms/a2a 2>/dev/null || true
 hermes plugins enable identyclaw-a2a --allow-tool-override
 
 # --- 6) Webhooks platform plugin --------------------------------------------
-log "Install IdentyClaw webhooks (hermes plugins install)"
 # Repo: hermes-identyclaw-webhook  |  plugin id: identyclaw-webhooks
-hermes plugins install discernible-io/hermes-identyclaw-webhook --no-enable --force \
-  || hermes plugins install discernible-io/hermes-identyclaw-webhook --no-enable
-hermes plugins enable identyclaw-webhooks
+# Prefer --enable (documented one-shot); fall back to enable if needed.
+log "Install IdentyClaw webhooks (hermes plugins install owner/repo)"
+if [[ -d "$HERMES_HOME/plugins/identyclaw-webhooks" ]]; then
+  hermes plugins install discernible-io/hermes-identyclaw-webhook --enable --force
+else
+  hermes plugins install discernible-io/hermes-identyclaw-webhook --enable
+fi
+hermes plugins enable identyclaw-webhooks 2>/dev/null || true
 
 # --- 7) Optional MCP docs ----------------------------------------------------
 log "Optional: IdentyClaw docs MCP"

@@ -30,7 +30,18 @@ bash scripts/install-stock-hermes.sh --a2a-public-url "https://YOUR.PUBLIC.HOST"
 ```
 
 That script: installs `idcp` → skill → enroll/session → systemd user sidecar →
-`hermes plugins install` for A2A + webhooks → optional docs MCP.
+`hermes plugins install owner/repo` for A2A + webhooks (same CLI as the
+[Plugins guide](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins/),
+using `--no-enable` / `--enable` for non-interactive) → optional docs MCP.
+
+Interactive peer-plugin path (no script) — answer the Enable / capability prompts:
+
+```bash
+curl -fsS http://127.0.0.1:9910/health
+hermes plugins install discernible-io/hermes-identyclaw-a2a          # Enable? y + tools.override
+hermes plugins disable platforms/a2a
+hermes plugins install discernible-io/hermes-identyclaw-webhook      # Enable? y
+```
 
 ## Manual auth-only install
 

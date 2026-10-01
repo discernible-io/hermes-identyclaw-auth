@@ -8,7 +8,7 @@ description: >-
   Passport mint on api.identyclaw.com. On Hermes, call the host helper `idcp`
   (secrets under $HERMES_HOME/secrets/). Peer A2A/hooks need the auth sidecar
   plus hermes-identyclaw-a2a and hermes-identyclaw-webhook plugins.
-version: 1.3.0
+version: 1.3.1
 author: Discernible IO
 license: MIT
 compatibility: >-
@@ -69,13 +69,14 @@ export PATH="$HERMES_HOME/bin:$PATH"
 bash "$HERMES_HOME/hermes-identyclaw-auth/scripts/install-sidecar-unit.sh"
 curl -fsS http://127.0.0.1:9910/health
 
-# plugins (repo hermes-identyclaw-webhook → plugin id identyclaw-webhooks)
-hermes plugins install discernible-io/hermes-identyclaw-a2a --no-enable
-hermes plugins disable platforms/a2a   # bundled A2A — required so overlay owns tools
-hermes plugins enable identyclaw-a2a --allow-tool-override
+# Stock Hermes plugin UX: install owner/repo → answer Enable? / capabilities.
+# (Scripted: add --enable / --no-enable; A2A needs --allow-tool-override.)
+hermes plugins install discernible-io/hermes-identyclaw-a2a
+# Enable? y  ·  grant tools.override? y
+hermes plugins disable platforms/a2a   # bundled A2A auto-loads — turn it off
 
-hermes plugins install discernible-io/hermes-identyclaw-webhook --no-enable
-hermes plugins enable identyclaw-webhooks
+hermes plugins install discernible-io/hermes-identyclaw-webhook
+# Enable? y
 ```
 
 Or run the full playbook:  
