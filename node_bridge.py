@@ -109,21 +109,114 @@ def install_node_deps(*, omit_dev: bool = True) -> int:
     return int(proc.returncode)
 
 
+def near_credentials_dir() -> Path:
+    return hermes_home() / "secrets" / "near-credentials"
+
+
+def list_near_credential_files() -> list[Path]:
+    cred_dir = near_credentials_dir()
+    if not cred_dir.is_dir():
+        return []
+    return sorted(cred_dir.glob("*.json"))
+
+
 def ensure_near_credentials_env() -> Optional[str]:
     """Populate NEAR_CREDENTIALS_FILE_PATH from secrets layout when unset."""
     existing = (os.getenv("NEAR_CREDENTIALS_FILE_PATH") or "").strip()
     if existing:
         return existing
-    cred_dir = hermes_home() / "secrets" / "near-credentials"
-    if not cred_dir.is_dir():
-        return None
-    candidates = sorted(cred_dir.glob("*.json"))
+    candidates = list_near_credential_files()
     if not candidates:
         return None
     chosen = str(candidates[0])
     os.environ["NEAR_CREDENTIALS_FILE_PATH"] = chosen
     os.environ.setdefault("RODIT_NEAR_CREDENTIALS_SOURCE", "file")
     return chosen
+
+
+def seed_near_credentials_into_dotenv(credentials_path: str) -> bool:
+    """Ensure NEAR_CREDENTIALS_FILE_PATH is recorded in $HERMES_HOME/.env."""
+    path = (credentials_path or "").strip()
+    if not path:
+        return False
+    env_file = hermes_home() / ".env"
+    try:
+        env_file.parent.mkdir(parents=True, exist_ok=True)
+        if env_file.is_file():
+            text = env_file.read_text(encoding="utf-8")
+            if any(line.startswith("NEAR_CREDENTIALS_FILE_PATH=") for line in text.splitlines()):
+                return False
+        else:
+            text = ""
+        with env_file.open("a", encoding="utf-8") as fh:
+            if text and not text.endswith("\n"):
+                fh.write("\n")
+            fh.write(f"NEAR_CREDENTIALS_FILE_PATH={path}\n")
+        try:
+            os.chmod(env_file, 0o600)
+        except OSError:
+            pass
+        return True
+    except OSError as exc:
+        logger.warning("identyclaw-auth: could not seed .env with NEAR credentials: %s", exc)
+        return False
+
+
+def ensure_enrolled(*, quiet: bool = False) -> dict[str, Any]:
+    """Create a NEAR implicit account when none is present (idempotent).
+
+    Used by ``install-deps`` and best-effort plugin load so operators do not need
+    a separate ``hermes identyclaw enroll`` step before purchase.
+    """
+    existing = ensure_near_credentials_env()
+    if existing:
+        account_id = None
+        try:
+            raw = json.loads(Path(existing).read_text(encoding="utf-8"))
+            account_id = raw.get("account_id") or raw.get("implicit_account_id")
+        except (OSError, json.JSONDecodeError, TypeError):
+            pass
+        payload = {
+            "ok": True,
+            "already": True,
+            "account_id": account_id,
+            "credentials": existing,
+            "near_credentials_dir": str(near_credentials_dir()),
+            "purchase": "https://purchase.identyclaw.com",
+        }
+        seed_near_credentials_into_dotenv(existing)
+        if not quiet and account_id:
+            print(f"  NEAR account already present: {account_id}")
+        return payload
+
+    if not deps_installed():
+        return {
+            "ok": False,
+            "error": "Node dependencies not installed",
+            "hint": "Run: hermes identyclaw install-deps",
+        }
+
+    if not quiet:
+        print("  Creating NEAR implicit account (none found)…")
+    payload = run_idcp(["enroll"])
+    if not isinstance(payload, dict):
+        return {"ok": False, "error": "enroll returned unexpected payload", "raw": payload}
+
+    credentials = ensure_near_credentials_env()
+    if credentials:
+        payload["credentials"] = credentials
+        seed_near_credentials_into_dotenv(credentials)
+        os.environ["NEAR_CREDENTIALS_FILE_PATH"] = credentials
+        os.environ.setdefault("RODIT_NEAR_CREDENTIALS_SOURCE", "file")
+
+    account_id = payload.get("account_id")
+    if not quiet:
+        if payload.get("ok") and account_id:
+            print(f"  NEAR account_id (paste at purchase): {account_id}")
+            print("  Keep the credentials JSON private (0600). Never paste a private key or JWT.")
+        elif not payload.get("ok"):
+            print(f"  Warning: enroll failed: {payload.get('error') or payload}")
+    return payload
 
 
 def _child_env() -> dict[str, str]:

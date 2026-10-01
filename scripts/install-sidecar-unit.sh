@@ -37,7 +37,7 @@ if [[ -z "$CRED" ]]; then
     printf '  %s\n' "${creds[@]}" >&2
     exit 1
   else
-    echo "No NEAR credentials under $HERMES_HOME/secrets/near-credentials/ — run: hermes identyclaw enroll" >&2
+    echo "No NEAR credentials under $HERMES_HOME/secrets/near-credentials/ — run: hermes identyclaw install-deps" >&2
     exit 1
   fi
 fi

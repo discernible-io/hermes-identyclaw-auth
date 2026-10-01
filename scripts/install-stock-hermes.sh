@@ -116,13 +116,14 @@ chmod +x "$AUTH_ROOT/bin/"*.mjs "$AUTH_ROOT/scripts/"*.sh 2>/dev/null || true
 # --- 2) Enroll / session -----------------------------------------------------
 if [[ "$SKIP_ENROLL" -eq 0 ]]; then
   log "Passport enrollment / session"
+  # install-deps above already auto-enrolls when no account exists; enroll is a safe reprint.
   if hermes identyclaw enroll 2>/dev/null; then
     :
   else
     node "$AUTH_ROOT/bin/idcp.mjs" enroll || true
   fi
   echo "If this is a new account, buy a Passport at https://purchase.identyclaw.com"
-  echo "with the account_id printed by enroll, then re-run: hermes identyclaw ensure_session && hermes identyclaw me"
+  echo "with the account_id printed above, then re-run: hermes identyclaw ensure_session && hermes identyclaw me"
   hermes identyclaw ensure_session 2>/dev/null \
     || node "$AUTH_ROOT/bin/idcp.mjs" ensure_session \
     || echo "ensure_session failed — mint Passport then retry"

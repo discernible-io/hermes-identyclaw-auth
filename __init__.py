@@ -13,13 +13,32 @@ __all__ = ["register"]
 def register(ctx) -> None:
     """Register tools, CLI, skill, and optional session-start sidecar ensure."""
     try:
-        from . import schemas, tools
+        from . import node_bridge, schemas, tools
         from .cli import _handle, _setup_argparse
     except ImportError:
         # Flat import fallback when the plugin dir is on sys.path without package context.
+        import node_bridge  # type: ignore
         import schemas  # type: ignore
         import tools  # type: ignore
         from cli import _handle, _setup_argparse  # type: ignore
+
+    # Mirror OpenClaw first-start bootstrap: create a NEAR account when missing.
+    # Requires prior `hermes identyclaw install-deps` (Node tree). Never overwrites.
+    try:
+        if node_bridge.deps_installed() and not node_bridge.ensure_near_credentials_env():
+            result = node_bridge.ensure_enrolled(quiet=True)
+            if result.get("ok") and result.get("account_id"):
+                logger.info(
+                    "identyclaw-auth: NEAR account ready — paste account_id at purchase: %s",
+                    result["account_id"],
+                )
+            elif not result.get("ok") and not result.get("already"):
+                logger.info(
+                    "identyclaw-auth: NEAR account bootstrap skipped: %s",
+                    result.get("error") or result,
+                )
+    except Exception:
+        logger.debug("identyclaw-auth: enroll-on-register skipped", exc_info=True)
 
     toolset = "identyclaw-auth"
     registrations = (
@@ -46,7 +65,8 @@ def register(ctx) -> None:
             handler_fn=_handle,
             description=(
                 "Host-login helpers and localhost RODiT sidecar for IdentyClaw Passport. "
-                "Node binary lives inside this plugin; run `hermes identyclaw install-deps` after install."
+                "After install run `hermes identyclaw install-deps` (npm + auto-creates a "
+                "NEAR account when none is present)."
             ),
         )
     except Exception:

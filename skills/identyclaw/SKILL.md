@@ -93,11 +93,13 @@ Then:
 ```bash
 hermes plugins install discernible-io/hermes-identyclaw-auth
 hermes identyclaw install-deps
-hermes identyclaw enroll
-# Human: https://purchase.identyclaw.com with account_id
+# Human: https://purchase.identyclaw.com with the printed account_id
 hermes identyclaw ensure_session
 hermes identyclaw me
 ```
+
+`install-deps` creates the NEAR implicit account when none is present. To reprint the
+id without changing keys: `hermes identyclaw enroll`.
 
 ## Day-to-day
 

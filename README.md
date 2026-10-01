@@ -22,11 +22,14 @@ Peer plugins:
 
 ```bash
 hermes plugins install discernible-io/hermes-identyclaw-auth   # Enable? y
-hermes identyclaw install-deps                                # npm ci into plugin node_modules
-hermes identyclaw enroll
+hermes identyclaw install-deps                                # npm ci + NEAR account if missing
 # Mint Passport at https://purchase.identyclaw.com (recipient = printed account_id)
 hermes identyclaw ensure_session && hermes identyclaw me
 ```
+
+`install-deps` creates a NEAR implicit account under `$HERMES_HOME/secrets/near-credentials/`
+when none is present and prints `account_id`. Re-running is safe (does not overwrite).
+Manual reprint: `hermes identyclaw enroll`.
 
 Optional docs MCP: `hermes mcp add IdentyClawDocs --url https://api.identyclaw.com/mcp`
 
@@ -60,13 +63,13 @@ bash "$HERMES_HOME/plugins/identyclaw-auth/scripts/install-stock-hermes.sh" \
 
 | Command | Purpose |
 |---------|---------|
-| `hermes identyclaw enroll` | Secrets dirs + NEAR implicit account |
+| `hermes identyclaw enroll` | Secrets dirs + NEAR implicit account (also auto-run by install-deps) |
 | `hermes identyclaw ensure_session [--force] [--base URL]` | Host login JWT (metadata only) |
 | `hermes identyclaw me` | Passport identity |
 | `hermes identyclaw list_sessions` | Cached hosts (no JWTs) |
 | `hermes identyclaw request METHOD /api/path` | Bearer-injected API call |
 | `hermes identyclaw create_hola` / `verify_hola` | HOLA handshake |
-| `hermes identyclaw install-deps` | `npm ci` into this plugin |
+| `hermes identyclaw install-deps` | `npm ci` + auto-create NEAR account if missing |
 | `hermes identyclaw sidecar start\|stop\|status\|ensure` | Sidecar lifecycle |
 
 Direct Node entrypoints still work for debugging:
@@ -93,7 +96,7 @@ Binds **127.0.0.1** only. Never prints full JWTs from the CLI.
 
 Layout under `$HERMES_HOME` (or `HERMES_APP_DIR` / `IDENTYCLAW_HOME`):
 
-- `secrets/near-credentials/*.json` — NEAR key (from enroll)
+- `secrets/near-credentials/*.json` — NEAR key (from install-deps / enroll)
 - `secrets/identyclaw/jwt-*.txt` — cached host JWTs
 - `NEAR_CREDENTIALS_FILE_PATH` — declared as `optional_env` (install may prompt)
 

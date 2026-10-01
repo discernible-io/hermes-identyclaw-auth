@@ -23,7 +23,10 @@ def _print(payload: Any) -> int:
 def _setup_argparse(subparser) -> None:
     subs = subparser.add_subparsers(dest="identyclaw_cmd")
 
-    subs.add_parser("enroll", help="Create secrets layout + NEAR implicit account")
+    subs.add_parser(
+        "enroll",
+        help="Create secrets layout + NEAR implicit account (also run automatically by install-deps)",
+    )
 
     p_ensure = subs.add_parser("ensure_session", help="Mint/refresh host login JWT (metadata only)")
     p_ensure.add_argument("--force", action="store_true")
@@ -53,7 +56,10 @@ def _setup_argparse(subparser) -> None:
 
     subs.add_parser(
         "install-deps",
-        help="npm ci (fallback: npm install --omit=dev) into this plugin's node_modules",
+        help=(
+            "npm ci into this plugin's node_modules, then create a NEAR implicit "
+            "account if none is present"
+        ),
     )
 
     p_sc = subs.add_parser("sidecar", help="Manage the localhost RODiT auth sidecar")
@@ -78,11 +84,27 @@ def _handle(args) -> None:
 
     if cmd == "install-deps":
         code = node_bridge.install_node_deps()
-        if code == 0:
-            _print({"ok": True, "deps_installed": node_bridge.deps_installed(), "root": str(node_bridge.PLUGIN_ROOT)})
-        else:
+        if code != 0:
             _print({"ok": False, "error": "npm install failed", "root": str(node_bridge.PLUGIN_ROOT)})
-        sys.exit(code)
+            sys.exit(code)
+        enroll = node_bridge.ensure_enrolled()
+        account_id = enroll.get("account_id") if isinstance(enroll, dict) else None
+        _print(
+            {
+                "ok": True,
+                "deps_installed": node_bridge.deps_installed(),
+                "root": str(node_bridge.PLUGIN_ROOT),
+                "enroll": enroll,
+                "account_id": account_id,
+                "purchase": "https://purchase.identyclaw.com",
+                "next_human": (
+                    "Paste account_id at https://purchase.identyclaw.com, then: "
+                    "hermes identyclaw ensure_session && hermes identyclaw me"
+                ),
+            }
+        )
+        # npm deps are the hard requirement; enroll is best-effort (idempotent).
+        sys.exit(0)
 
     if cmd == "status":
         payload = node_bridge.sidecar_status()
