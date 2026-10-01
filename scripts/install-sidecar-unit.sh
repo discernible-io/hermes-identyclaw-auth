@@ -3,13 +3,26 @@
 set -euo pipefail
 
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
-AUTH_ROOT="${IDENTYCLAW_AUTH_ROOT:-$HERMES_HOME/hermes-identyclaw-auth}"
+AUTH_ROOT="${IDENTYCLAW_AUTH_ROOT:-}"
 UNIT_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"
 UNIT_NAME="identyclaw-auth-sidecar.service"
 PORT="${IDENTYCLAW_AUTH_PORT:-9910}"
 
-if [[ ! -d "$AUTH_ROOT" ]]; then
-  echo "Auth package not found at $AUTH_ROOT" >&2
+if [[ -z "$AUTH_ROOT" ]]; then
+  for c in \
+    "$HERMES_HOME/plugins/identyclaw-auth" \
+    "$HERMES_HOME/hermes-identyclaw-auth" \
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  do
+    if [[ -f "$c/bin/sidecar.mjs" ]]; then
+      AUTH_ROOT="$c"
+      break
+    fi
+  done
+fi
+
+if [[ -z "${AUTH_ROOT:-}" || ! -d "$AUTH_ROOT" ]]; then
+  echo "Auth plugin not found (tried \$HERMES_HOME/plugins/identyclaw-auth)." >&2
   exit 1
 fi
 
@@ -24,7 +37,7 @@ if [[ -z "$CRED" ]]; then
     printf '  %s\n' "${creds[@]}" >&2
     exit 1
   else
-    echo "No NEAR credentials under $HERMES_HOME/secrets/near-credentials/ — run: idcp enroll" >&2
+    echo "No NEAR credentials under $HERMES_HOME/secrets/near-credentials/ — run: hermes identyclaw enroll" >&2
     exit 1
   fi
 fi

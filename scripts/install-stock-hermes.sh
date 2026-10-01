@@ -1,22 +1,23 @@
 #!/usr/bin/env bash
 # Stock Hermes + IdentyClaw install playbook (OpenClaw stays stopped).
 #
-# Ordered: prereqs → auth host package → skill → enroll/session → sidecar →
+# Ordered: prereqs → auth plugin → enroll/session → sidecar →
 # A2A plugin → webhook plugin → optional MCP docs.
 #
 # Usage:
 #   export HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
-#   bash scripts/install-stock-hermes.sh
+#   hermes plugins install discernible-io/hermes-identyclaw-auth --enable
+#   bash "$HERMES_HOME/plugins/identyclaw-auth/scripts/install-stock-hermes.sh"
 #
 # Flags:
-#   --skip-enroll     Do not run idcp enroll / ensure_session
+#   --skip-enroll     Do not run enroll / ensure_session
 #   --skip-plugins    Stop after auth + sidecar
 #   --skip-sidecar    Do not start the auth sidecar
 #   --a2a-public-url URL   Write A2A_PUBLIC_URL into $HERMES_HOME/.env
 set -euo pipefail
 
 HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
-AUTH_ROOT="${IDENTYCLAW_AUTH_ROOT:-$HERMES_HOME/hermes-identyclaw-auth}"
+AUTH_ROOT="${IDENTYCLAW_AUTH_ROOT:-}"
 SKIP_ENROLL=0
 SKIP_PLUGINS=0
 SKIP_SIDECAR=0
@@ -47,6 +48,26 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "Missing required command: $1"
 }
 
+resolve_auth_root() {
+  if [[ -n "$AUTH_ROOT" && -d "$AUTH_ROOT" ]]; then
+    printf '%s' "$AUTH_ROOT"
+    return
+  fi
+  local candidates=(
+    "$HERMES_HOME/plugins/identyclaw-auth"
+    "$HERMES_HOME/hermes-identyclaw-auth"
+    "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+  )
+  local c
+  for c in "${candidates[@]}"; do
+    if [[ -f "$c/plugin.yaml" || -f "$c/bin/idcp.mjs" ]]; then
+      printf '%s' "$c"
+      return
+    fi
+  done
+  return 1
+}
+
 # --- 0) Prerequisites -------------------------------------------------------
 log "Prerequisites (Hermes already installed; OpenClaw left stopped)"
 require_cmd hermes
@@ -71,39 +92,43 @@ fi
 
 mkdir -p "$HERMES_HOME"/{bin,plugins,skills,secrets}
 
-# --- 1) Auth host package (NOT a Hermes plugin) ------------------------------
-log "Install hermes-identyclaw-auth (host CLI + sidecar + skill source)"
-if [[ ! -d "$AUTH_ROOT/.git" ]]; then
-  git clone https://github.com/discernible-io/hermes-identyclaw-auth.git "$AUTH_ROOT"
+# --- 1) Auth plugin ----------------------------------------------------------
+log "Install hermes-identyclaw-auth (Hermes plugin)"
+if [[ -d "$HERMES_HOME/plugins/identyclaw-auth" ]]; then
+  hermes plugins install discernible-io/hermes-identyclaw-auth --enable --force 2>/dev/null \
+    || hermes plugins enable identyclaw-auth 2>/dev/null || true
 else
-  git -C "$AUTH_ROOT" pull --ff-only || true
+  hermes plugins install discernible-io/hermes-identyclaw-auth --enable
 fi
+
+AUTH_ROOT="$(resolve_auth_root)" || die "Could not locate identyclaw-auth plugin tree"
+export IDENTYCLAW_AUTH_ROOT="$AUTH_ROOT"
 (
   cd "$AUTH_ROOT"
-  npm install --omit=dev
+  if command -v hermes >/dev/null 2>&1 && hermes identyclaw install-deps >/dev/null 2>&1; then
+    :
+  else
+    npm ci 2>/dev/null || npm install --omit=dev
+  fi
 )
-ln -sfn "$AUTH_ROOT/bin/idcp.mjs" "$HERMES_HOME/bin/idcp"
 chmod +x "$AUTH_ROOT/bin/"*.mjs "$AUTH_ROOT/scripts/"*.sh 2>/dev/null || true
-hash -r
-command -v idcp >/dev/null || die "idcp not on PATH (expected $HERMES_HOME/bin/idcp)"
 
-# --- 2) Skill ----------------------------------------------------------------
-log "Install identyclaw skill into Hermes"
-if hermes skills list 2>/dev/null | grep -qi 'identyclaw'; then
-  echo "Skill already present (hermes skills list)."
-else
-  hermes skills install discernible-io/hermes-identyclaw-auth/identyclaw --yes \
-    || hermes skills install discernible-io/hermes-identyclaw-auth/identyclaw
-fi
-
-# --- 3) Enroll / session -----------------------------------------------------
+# --- 2) Enroll / session -----------------------------------------------------
 if [[ "$SKIP_ENROLL" -eq 0 ]]; then
   log "Passport enrollment / session"
-  idcp enroll || true
+  if hermes identyclaw enroll 2>/dev/null; then
+    :
+  else
+    node "$AUTH_ROOT/bin/idcp.mjs" enroll || true
+  fi
   echo "If this is a new account, buy a Passport at https://purchase.identyclaw.com"
-  echo "with the account_id printed by enroll, then re-run: idcp ensure_session && idcp me"
-  idcp ensure_session || echo "ensure_session failed — mint Passport then retry"
-  idcp me || echo "idcp me failed — Passport not ready yet"
+  echo "with the account_id printed by enroll, then re-run: hermes identyclaw ensure_session && hermes identyclaw me"
+  hermes identyclaw ensure_session 2>/dev/null \
+    || node "$AUTH_ROOT/bin/idcp.mjs" ensure_session \
+    || echo "ensure_session failed — mint Passport then retry"
+  hermes identyclaw me 2>/dev/null \
+    || node "$AUTH_ROOT/bin/idcp.mjs" me \
+    || echo "me failed — Passport not ready yet"
 fi
 
 # Seed .env
@@ -130,10 +155,15 @@ if [[ ${#creds[@]} -ge 1 ]] && ! grep -q '^NEAR_CREDENTIALS_FILE_PATH=' "$ENV_FI
   echo "NEAR_CREDENTIALS_FILE_PATH=${creds[0]}" >>"$ENV_FILE"
 fi
 
-# --- 4) Sidecar --------------------------------------------------------------
+# --- 3) Sidecar --------------------------------------------------------------
 if [[ "$SKIP_SIDECAR" -eq 0 ]]; then
-  log "Start auth sidecar (systemd --user)"
-  bash "$AUTH_ROOT/scripts/install-sidecar-unit.sh"
+  log "Start auth sidecar (systemd --user preferred)"
+  if bash "$AUTH_ROOT/scripts/install-sidecar-unit.sh"; then
+    :
+  else
+    hermes identyclaw sidecar start 2>/dev/null \
+      || die "Could not start auth sidecar"
+  fi
   curl -fsS "http://127.0.0.1:${IDENTYCLAW_AUTH_PORT:-9910}/health"
   echo
   curl -fsS "http://127.0.0.1:${IDENTYCLAW_AUTH_PORT:-9910}/v1/own_passport" || true
@@ -141,7 +171,7 @@ if [[ "$SKIP_SIDECAR" -eq 0 ]]; then
 fi
 
 if [[ "$SKIP_PLUGINS" -eq 1 ]]; then
-  log "Done (plugins skipped)."
+  log "Done (peer plugins skipped)."
   exit 0
 fi
 
@@ -150,10 +180,7 @@ if ! curl -fsS "http://127.0.0.1:${IDENTYCLAW_AUTH_PORT:-9910}/health" >/dev/nul
   die "Auth sidecar not healthy on :${IDENTYCLAW_AUTH_PORT:-9910} — start it before enabling A2A/webhooks"
 fi
 
-# --- 5) A2A platform plugin --------------------------------------------------
-# Stock Hermes flow (docs): install owner/repo → enable (opt-in) → capabilities.
-# Scripted form uses --no-enable / --enable as documented; we install disabled,
-# disable bundled platforms/a2a, then enable with tools.override grant.
+# --- 4) A2A platform plugin --------------------------------------------------
 # Plugin id must be identyclaw-a2a (unique). Bundled key is platforms/a2a
 # (yaml name a2a-platform) — enabling "a2a-platform" would hit the bundled copy.
 log "Install IdentyClaw A2A overlay (hermes plugins install owner/repo)"
@@ -165,9 +192,7 @@ fi
 hermes plugins disable platforms/a2a 2>/dev/null || true
 hermes plugins enable identyclaw-a2a --allow-tool-override
 
-# --- 6) Webhooks platform plugin --------------------------------------------
-# Repo: hermes-identyclaw-webhook  |  plugin id: identyclaw-webhooks
-# Prefer --enable (documented one-shot); fall back to enable if needed.
+# --- 5) Webhooks platform plugin --------------------------------------------
 log "Install IdentyClaw webhooks (hermes plugins install owner/repo)"
 if [[ -d "$HERMES_HOME/plugins/identyclaw-webhooks" ]]; then
   hermes plugins install discernible-io/hermes-identyclaw-webhook --enable --force
@@ -176,7 +201,7 @@ else
 fi
 hermes plugins enable identyclaw-webhooks 2>/dev/null || true
 
-# --- 7) Optional MCP docs ----------------------------------------------------
+# --- 6) Optional MCP docs ----------------------------------------------------
 log "Optional: IdentyClaw docs MCP"
 if hermes mcp list 2>/dev/null | grep -qi identyclaw; then
   echo "MCP 'identyclaw' already configured."
@@ -200,6 +225,7 @@ cat <<EOF
 
 plugins:
   enabled:
+    - identyclaw-auth
     - identyclaw-a2a
     - identyclaw-webhooks
   disabled:

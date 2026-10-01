@@ -1,0 +1,375 @@
+"""Shared paths and Node process helpers for the IdentyClaw auth plugin."""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import shutil
+import subprocess
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any, Optional, Sequence
+
+logger = logging.getLogger(__name__)
+
+PLUGIN_ROOT = Path(__file__).resolve().parent
+IDCP_SCRIPT = PLUGIN_ROOT / "bin" / "idcp.mjs"
+SIDECAR_SCRIPT = PLUGIN_ROOT / "bin" / "sidecar.mjs"
+PACKAGE_JSON = PLUGIN_ROOT / "package.json"
+
+
+def hermes_home() -> Path:
+    raw = (
+        os.getenv("IDENTYCLAW_HOME")
+        or os.getenv("HERMES_APP_DIR")
+        or os.getenv("HERMES_HOME")
+        or ""
+    ).strip()
+    if raw:
+        return Path(raw).expanduser().resolve()
+    return (Path.home() / ".hermes").resolve()
+
+
+def node_bin() -> str:
+    override = (os.getenv("IDENTYCLAW_NODE_BIN") or "").strip()
+    if override:
+        return override
+    return shutil.which("node") or "node"
+
+
+def npm_bin() -> str:
+    return shutil.which("npm") or "npm"
+
+
+def auth_port() -> int:
+    raw = (os.getenv("IDENTYCLAW_AUTH_PORT") or "9910").strip() or "9910"
+    try:
+        return int(raw)
+    except ValueError:
+        return 9910
+
+
+def auth_host() -> str:
+    return (os.getenv("IDENTYCLAW_AUTH_HOST") or "127.0.0.1").strip() or "127.0.0.1"
+
+
+def sidecar_base() -> str:
+    return f"http://{auth_host()}:{auth_port()}"
+
+
+def sidecar_autostart_enabled() -> bool:
+    raw = (os.getenv("IDENTYCLAW_SIDECAR_AUTOSTART") or "true").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
+def run_dir() -> Path:
+    path = hermes_home() / "run"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def log_dir() -> Path:
+    path = hermes_home() / "logs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def pidfile_path() -> Path:
+    return run_dir() / "identyclaw-auth.pid"
+
+
+def sidecar_logfile() -> Path:
+    return log_dir() / "identyclaw-auth.log"
+
+
+def deps_installed() -> bool:
+    return (PLUGIN_ROOT / "node_modules").is_dir() and PACKAGE_JSON.is_file()
+
+
+def install_node_deps(*, omit_dev: bool = True) -> int:
+    """Run npm ci (fallback: npm install) inside the plugin directory."""
+    npm = npm_bin()
+    if not shutil.which(npm) and npm == "npm":
+        logger.error("npm is not on PATH; install Node.js >= 22.19 and re-run")
+        return 1
+    if not PACKAGE_JSON.is_file():
+        logger.error("package.json missing at %s", PACKAGE_JSON)
+        return 1
+
+    print(f"  $ cd {PLUGIN_ROOT} && {npm} ci")
+    proc = subprocess.run([npm, "ci"], cwd=str(PLUGIN_ROOT), check=False)
+    if proc.returncode != 0:
+        args = [npm, "install"]
+        if omit_dev:
+            args.append("--omit=dev")
+        print(f"  npm ci failed — falling back to: {' '.join(args)}")
+        proc = subprocess.run(args, cwd=str(PLUGIN_ROOT), check=False)
+    return int(proc.returncode)
+
+
+def ensure_near_credentials_env() -> Optional[str]:
+    """Populate NEAR_CREDENTIALS_FILE_PATH from secrets layout when unset."""
+    existing = (os.getenv("NEAR_CREDENTIALS_FILE_PATH") or "").strip()
+    if existing:
+        return existing
+    cred_dir = hermes_home() / "secrets" / "near-credentials"
+    if not cred_dir.is_dir():
+        return None
+    candidates = sorted(cred_dir.glob("*.json"))
+    if not candidates:
+        return None
+    chosen = str(candidates[0])
+    os.environ["NEAR_CREDENTIALS_FILE_PATH"] = chosen
+    os.environ.setdefault("RODIT_NEAR_CREDENTIALS_SOURCE", "file")
+    return chosen
+
+
+def _child_env() -> dict[str, str]:
+    env = os.environ.copy()
+    home = str(hermes_home())
+    env.setdefault("HERMES_HOME", home)
+    env.setdefault("IDENTYCLAW_HOME", home)
+    ensure_near_credentials_env()
+    if os.getenv("NEAR_CREDENTIALS_FILE_PATH"):
+        env["NEAR_CREDENTIALS_FILE_PATH"] = os.environ["NEAR_CREDENTIALS_FILE_PATH"]
+        env.setdefault("RODIT_NEAR_CREDENTIALS_SOURCE", "file")
+    return env
+
+
+def run_idcp(argv: Sequence[str], *, timeout: Optional[float] = 120.0) -> dict[str, Any]:
+    """Shell out to the plugin-owned Node idcp and parse JSON stdout."""
+    if not IDCP_SCRIPT.is_file():
+        return {"ok": False, "error": f"idcp missing at {IDCP_SCRIPT}"}
+    if not deps_installed():
+        return {
+            "ok": False,
+            "error": "Node dependencies not installed",
+            "hint": "Run: hermes identyclaw install-deps",
+        }
+
+    cmd = [node_bin(), str(IDCP_SCRIPT), *argv]
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(PLUGIN_ROOT),
+            env=_child_env(),
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except FileNotFoundError:
+        return {
+            "ok": False,
+            "error": f"node binary not found ({node_bin()})",
+            "hint": "Install Node.js >= 22.19 or set IDENTYCLAW_NODE_BIN",
+        }
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "error": f"idcp timed out after {timeout}s", "argv": list(argv)}
+
+    stdout = (proc.stdout or "").strip()
+    stderr = (proc.stderr or "").strip()
+    if not stdout:
+        return {
+            "ok": False,
+            "error": "idcp produced no stdout",
+            "stderr": stderr,
+            "exit_code": proc.returncode,
+        }
+    try:
+        payload = json.loads(stdout)
+    except json.JSONDecodeError:
+        # Some commands may print usage text; surface raw output.
+        return {
+            "ok": proc.returncode == 0,
+            "raw": stdout,
+            "stderr": stderr,
+            "exit_code": proc.returncode,
+        }
+    if not isinstance(payload, dict):
+        return {"ok": proc.returncode == 0, "result": payload, "exit_code": proc.returncode}
+    payload.setdefault("ok", proc.returncode == 0)
+    if proc.returncode != 0:
+        payload.setdefault("exit_code", proc.returncode)
+        if stderr:
+            payload.setdefault("stderr", stderr)
+    return payload
+
+
+def sidecar_health(timeout: float = 2.0) -> bool:
+    try:
+        req = urllib.request.Request(
+            sidecar_base().rstrip("/") + "/health",
+            headers={"Accept": "application/json"},
+            method="GET",
+        )
+        with urllib.request.urlopen(req, timeout=timeout) as resp:  # noqa: S310 — localhost
+            data = json.loads(resp.read().decode("utf-8"))
+            return bool(data.get("ok"))
+    except Exception:
+        return False
+
+
+def read_pid() -> Optional[int]:
+    path = pidfile_path()
+    if not path.is_file():
+        return None
+    try:
+        raw = path.read_text(encoding="utf-8").strip()
+        return int(raw) if raw else None
+    except (OSError, ValueError):
+        return None
+
+
+def pid_alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def sidecar_status() -> dict[str, Any]:
+    pid = read_pid()
+    healthy = sidecar_health()
+    return {
+        "ok": True,
+        "healthy": healthy,
+        "base": sidecar_base(),
+        "port": auth_port(),
+        "host": auth_host(),
+        "pid": pid,
+        "pid_alive": bool(pid and pid_alive(pid)),
+        "pidfile": str(pidfile_path()),
+        "deps_installed": deps_installed(),
+        "autostart": sidecar_autostart_enabled(),
+    }
+
+
+def start_sidecar(*, foreground: bool = False) -> dict[str, Any]:
+    if sidecar_health():
+        return {"ok": True, "already": True, **sidecar_status()}
+
+    if not deps_installed():
+        code = install_node_deps()
+        if code != 0 or not deps_installed():
+            return {
+                "ok": False,
+                "error": "Failed to install Node dependencies",
+                "hint": f"cd {PLUGIN_ROOT} && npm ci",
+            }
+
+    if not SIDECAR_SCRIPT.is_file():
+        return {"ok": False, "error": f"sidecar missing at {SIDECAR_SCRIPT}"}
+
+    pid = read_pid()
+    if pid and pid_alive(pid) and not sidecar_health():
+        # Stale listener race — still report so ops can stop/restart.
+        return {
+            "ok": False,
+            "error": f"pidfile points at live pid {pid} but /health failed",
+            "hint": "hermes identyclaw sidecar stop && hermes identyclaw sidecar start",
+            **sidecar_status(),
+        }
+
+    ensure_near_credentials_env()
+    port = auth_port()
+    env = _child_env()
+    env["IDENTYCLAW_AUTH_PORT"] = str(port)
+    cmd = [node_bin(), str(SIDECAR_SCRIPT), "--port", str(port)]
+
+    if foreground:
+        proc = subprocess.run(cmd, cwd=str(PLUGIN_ROOT), env=env, check=False)
+        return {"ok": proc.returncode == 0, "exit_code": proc.returncode}
+
+    logfile = sidecar_logfile()
+    log_fh = open(logfile, "a", encoding="utf-8")  # noqa: SIM115 — kept open for daemon
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(PLUGIN_ROOT),
+            env=env,
+            stdout=log_fh,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    except FileNotFoundError:
+        log_fh.close()
+        return {
+            "ok": False,
+            "error": f"node binary not found ({node_bin()})",
+            "hint": "Install Node.js >= 22.19 or set IDENTYCLAW_NODE_BIN",
+        }
+    finally:
+        # Child holds the fd; parent can close its copy.
+        try:
+            log_fh.close()
+        except Exception:
+            pass
+
+    pidfile_path().write_text(f"{proc.pid}\n", encoding="utf-8")
+    # Brief readiness wait
+    for _ in range(20):
+        if sidecar_health():
+            return {
+                "ok": True,
+                "started": True,
+                "pid": proc.pid,
+                "log": str(logfile),
+                **{k: v for k, v in sidecar_status().items() if k != "ok"},
+            }
+        if proc.poll() is not None:
+            break
+        try:
+            import time
+
+            time.sleep(0.15)
+        except Exception:
+            break
+
+    return {
+        "ok": False,
+        "error": "Sidecar did not become healthy",
+        "pid": proc.pid,
+        "log": str(logfile),
+        "hint": "Check NEAR_CREDENTIALS_FILE_PATH and the log file",
+        **{k: v for k, v in sidecar_status().items() if k != "ok"},
+    }
+
+
+def stop_sidecar() -> dict[str, Any]:
+    pid = read_pid()
+    stopped = False
+    if pid and pid_alive(pid):
+        try:
+            os.kill(pid, 15)
+            stopped = True
+        except OSError as exc:
+            return {"ok": False, "error": f"failed to signal pid {pid}: {exc}"}
+    try:
+        if pidfile_path().is_file():
+            pidfile_path().unlink()
+    except OSError:
+        pass
+    return {
+        "ok": True,
+        "stopped": stopped,
+        "pid": pid,
+        "healthy": sidecar_health(),
+    }
+
+
+def ensure_sidecar_running() -> dict[str, Any]:
+    """Start the sidecar when autostart is enabled and /health is down."""
+    if sidecar_health():
+        return {"ok": True, "already": True, **sidecar_status()}
+    if not sidecar_autostart_enabled():
+        return {
+            "ok": False,
+            "error": "Auth sidecar is not running",
+            "hint": "hermes identyclaw sidecar start  (or enable IDENTYCLAW_SIDECAR_AUTOSTART)",
+            **sidecar_status(),
+        }
+    return start_sidecar()

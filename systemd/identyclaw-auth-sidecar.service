@@ -6,8 +6,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-# Install script rewrites WorkingDirectory / ExecStart / EnvironmentFile for this host.
-WorkingDirectory=%h/.hermes/hermes-identyclaw-auth
+# Prefer scripts/install-sidecar-unit.sh which rewrites WorkingDirectory for this host.
+WorkingDirectory=%h/.hermes/plugins/identyclaw-auth
 Environment=HERMES_HOME=%h/.hermes
 Environment=IDENTYCLAW_AUTH_PORT=9910
 EnvironmentFile=-%h/.hermes/.env

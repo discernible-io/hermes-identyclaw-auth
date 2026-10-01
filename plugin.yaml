@@ -1,0 +1,60 @@
+name: identyclaw-auth
+label: IdentyClaw Auth
+version: 0.2.0
+manifest_version: 2
+api_version: 1
+description: >
+  IdentyClaw Passport auth for Hermes: enroll / host login (idcp), bundled
+  skill, and a localhost Node RODiT sidecar used by the A2A and signed-webhook
+  peer plugins. Node stays a plugin-owned sidecar; Python only orchestrates.
+author: Discernible IO
+license: Apache-2.0
+homepage: https://github.com/discernible-io/hermes-identyclaw-auth
+tags: [identity, passport, near, rodit, hola, auth, sidecar]
+provides_tools:
+  - identyclaw_enroll
+  - identyclaw_ensure_session
+  - identyclaw_me
+  - identyclaw_list_sessions
+  - identyclaw_request
+  - identyclaw_create_hola
+  - identyclaw_verify_hola
+  - identyclaw_sidecar_status
+requires_env: []
+optional_env:
+  - name: NEAR_CREDENTIALS_FILE_PATH
+    description: >
+      Path to NEAR credentials JSON under $HERMES_HOME/secrets/near-credentials/
+      (created by `hermes identyclaw enroll`). Required for the sidecar / peer stack.
+    prompt: "NEAR credentials JSON path (leave blank until after enroll)"
+    password: false
+  - name: IDENTYCLAW_AUTH_PORT
+    description: "Localhost auth sidecar port (default 9910)."
+    prompt: "IdentyClaw auth sidecar port"
+    password: false
+  - name: IDENTYCLAW_AUTH_HOST
+    description: "Auth sidecar bind/connect host (default 127.0.0.1)."
+    prompt: "Auth sidecar host"
+    password: false
+  - name: IDENTYCLAW_SIDECAR_AUTOSTART
+    description: >
+      When true, session-start may spawn the Node sidecar if it is not already
+      listening and NEAR credentials exist (default true). Peer plugins still
+      health-check :9910. Install alone does not start the process — use
+      `hermes identyclaw sidecar start` or the optional systemd unit.
+    prompt: "Auto-start auth sidecar when missing? (true/false)"
+    password: false
+  - name: IDENTYCLAW_NODE_BIN
+    description: "Path to the node binary (default: node on PATH)."
+    prompt: "Node executable path"
+    password: false
+  - name: IDENTYCLAW_BASE_URL
+    description: "IdentyClaw API base URL (default https://api.identyclaw.com)."
+    prompt: "IdentyClaw API base URL"
+    password: false
+  - name: IDENTYCLAW_JWT_AUDIENCE
+    description: >
+      Optional JWT aud override only — prefer
+      RoditClient.getConfigOwnRodit().own_rodit.owner_id from NEAR credentials.
+    prompt: "(optional) JWT audience override"
+    password: false

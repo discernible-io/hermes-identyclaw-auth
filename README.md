@@ -1,13 +1,13 @@
-# @identyclaw/hermes-identyclaw-auth
+# IdentyClaw Auth (Hermes plugin)
 
-**Host package** (not a Hermes plugin): IdentyClaw Passport helpers for stock Hermes —
-the **`idcp` CLI** (host login / HOLA) plus a **localhost auth sidecar** wrapping
-`@rodit/rodit-auth-be`, and the **`identyclaw` skill**.
+Passport helpers for Hermes: **`hermes identyclaw …`** (Node `idcp`), agent tools,
+bundled skill, and a **localhost RODiT auth sidecar** used by the A2A / signed-webhook
+peer plugins.
 
-There is no `plugin.yaml`. Do **not** run `hermes plugins install` on this repo.
-Install with npm + symlink (or the stock playbook below), then install the skill.
+Node stays plugin-owned (`package.json` → `npm ci` into this directory). Python only
+orchestrates. Passport mint / NEAR / purchase portal are unchanged.
 
-Peer A2A / RODiT webhooks are separate Hermes plugins:
+Peer plugins:
 
 - [`hermes-identyclaw-a2a`](https://github.com/discernible-io/hermes-identyclaw-a2a) → plugin id `identyclaw-a2a`
 - [`hermes-identyclaw-webhook`](https://github.com/discernible-io/hermes-identyclaw-webhook) → plugin id `identyclaw-webhooks`
@@ -15,81 +15,66 @@ Peer A2A / RODiT webhooks are separate Hermes plugins:
 ## Prerequisites
 
 - Stock Hermes Agent already installed (`hermes` on `PATH`)
-- Node **≥ 22.19** and `libatomic.so.1`
+- Node **≥ 22.19** and `npm` (and typically `libatomic.so.1` for RODiT)
 - OpenClaw left **stopped** (do not run both peer stacks)
 
-## One-shot stock install
+## Install
 
 ```bash
-export HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
-git clone https://github.com/discernible-io/hermes-identyclaw-auth.git \
-  "$HERMES_HOME/hermes-identyclaw-auth"
-cd "$HERMES_HOME/hermes-identyclaw-auth"
-npm install --omit=dev
-bash scripts/install-stock-hermes.sh --a2a-public-url "https://YOUR.PUBLIC.HOST"
+hermes plugins install discernible-io/hermes-identyclaw-auth   # Enable? y
+hermes identyclaw install-deps                                # npm ci into plugin node_modules
+hermes identyclaw enroll
+# Mint Passport at https://purchase.identyclaw.com (recipient = printed account_id)
+hermes identyclaw ensure_session && hermes identyclaw me
 ```
 
-That script: installs `idcp` → skill → enroll/session → systemd user sidecar →
-`hermes plugins install owner/repo` for A2A + webhooks (same CLI as the
-[Plugins guide](https://hermes-agent.nousresearch.com/docs/user-guide/features/plugins/),
-using `--no-enable` / `--enable` for non-interactive) → optional docs MCP.
+Optional docs MCP: `hermes mcp add IdentyClawDocs --url https://api.identyclaw.com/mcp`
 
-Interactive peer-plugin path (no script) — answer the Enable / capability prompts:
+### Peer stack (A2A + signed `/hooks/*`)
 
 ```bash
+hermes identyclaw sidecar start                               # 127.0.0.1:9910
+# or: bash "$HERMES_HOME/plugins/identyclaw-auth/scripts/install-sidecar-unit.sh"
+
 curl -fsS http://127.0.0.1:9910/health
-hermes plugins install discernible-io/hermes-identyclaw-a2a          # Enable? y + tools.override
-hermes plugins disable platforms/a2a
-hermes plugins install discernible-io/hermes-identyclaw-webhook      # Enable? y
+
+hermes plugins install discernible-io/hermes-identyclaw-a2a    # Enable? y + tools.override
+hermes plugins disable platforms/a2a                          # bundled A2A auto-loads
+hermes plugins install discernible-io/hermes-identyclaw-webhook
 ```
 
-## Manual auth-only install
+`hermes plugins install` does **not** start a long-lived Node process by itself. Use
+`hermes identyclaw sidecar start`, session-start autostart (`IDENTYCLAW_SIDECAR_AUTOSTART`,
+default true), or the systemd user unit via `scripts/install-sidecar-unit.sh`.
+
+### One-shot playbook
 
 ```bash
 export HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
-git clone https://github.com/discernible-io/hermes-identyclaw-auth.git \
-  "$HERMES_HOME/hermes-identyclaw-auth"
-cd "$HERMES_HOME/hermes-identyclaw-auth"
-npm install --omit=dev
-mkdir -p "$HERMES_HOME/bin"
-ln -sfn "$(pwd)/bin/idcp.mjs" "$HERMES_HOME/bin/idcp"
-export PATH="$HERMES_HOME/bin:$PATH"
-
-hermes skills install discernible-io/hermes-identyclaw-auth/identyclaw
-
-idcp enroll
-# buy Passport at https://purchase.identyclaw.com with printed account_id
-idcp ensure_session
-idcp me
+hermes plugins install discernible-io/hermes-identyclaw-auth --enable
+bash "$HERMES_HOME/plugins/identyclaw-auth/scripts/install-stock-hermes.sh" \
+  --a2a-public-url "https://YOUR.PUBLIC.HOST"
 ```
 
-Secrets land under `$HERMES_HOME/secrets/` (`near-credentials/`, `identyclaw/`).
-Always export `HERMES_HOME` (or rely on the `~/.hermes` default when that directory exists).
+## CLI
 
-## Auth sidecar lifecycle
+| Command | Purpose |
+|---------|---------|
+| `hermes identyclaw enroll` | Secrets dirs + NEAR implicit account |
+| `hermes identyclaw ensure_session [--force] [--base URL]` | Host login JWT (metadata only) |
+| `hermes identyclaw me` | Passport identity |
+| `hermes identyclaw list_sessions` | Cached hosts (no JWTs) |
+| `hermes identyclaw request METHOD /api/path` | Bearer-injected API call |
+| `hermes identyclaw create_hola` / `verify_hola` | HOLA handshake |
+| `hermes identyclaw install-deps` | `npm ci` into this plugin |
+| `hermes identyclaw sidecar start\|stop\|status\|ensure` | Sidecar lifecycle |
 
-Peer plugins expect `http://127.0.0.1:9910`. Prefer the systemd user unit:
+Direct Node entrypoints still work for debugging:
 
 ```bash
-export HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
-export NEAR_CREDENTIALS_FILE_PATH="$HERMES_HOME/secrets/near-credentials/<account>.json"
-bash scripts/install-sidecar-unit.sh
-# systemctl --user status identyclaw-auth-sidecar.service
-curl -fsS http://127.0.0.1:9910/health
-curl -fsS http://127.0.0.1:9910/v1/own_passport
+node bin/idcp.mjs enroll
+NEAR_CREDENTIALS_FILE_PATH=/path/to/near.json node bin/sidecar.mjs --port 9910
 ```
-
-Manual (foreground):
-
-```bash
-NEAR_CREDENTIALS_FILE_PATH=/path/to/near.json \
-  node bin/sidecar.mjs --port 9910
-```
-
-Health-check `/health` before enabling A2A or webhooks.
-
-Inbound JWT `aud` comes from `RoditClient.getConfigOwnRodit().own_rodit.owner_id`.
-`IDENTYCLAW_JWT_AUDIENCE` is an optional fallback only when the passport cannot load.
 
 ## Sidecar routes
 
@@ -102,12 +87,19 @@ Inbound JWT `aud` comes from `RoditClient.getConfigOwnRodit().own_rodit.owner_id
 | POST | `/v1/authenticate_webhook` | Ed25519 webhook verify |
 | GET/POST | `/api/login/timestamp`, `/api/login` | peer inbound login |
 
-Binds **127.0.0.1** only. The CLI never prints full JWTs.
+Binds **127.0.0.1** only. Never prints full JWTs from the CLI.
 
-## Minimal `.env` surface
+## Secrets / env
+
+Layout under `$HERMES_HOME` (or `HERMES_APP_DIR` / `IDENTYCLAW_HOME`):
+
+- `secrets/near-credentials/*.json` — NEAR key (from enroll)
+- `secrets/identyclaw/jwt-*.txt` — cached host JWTs
+- `NEAR_CREDENTIALS_FILE_PATH` — declared as `optional_env` (install may prompt)
+
+Minimal `$HERMES_HOME/.env`:
 
 ```bash
-# $HERMES_HOME/.env
 HERMES_HOME=/home/you/.hermes
 NEAR_CREDENTIALS_FILE_PATH=/home/you/.hermes/secrets/near-credentials/<account>.json
 IDENTYCLAW_AUTH_PORT=9910
@@ -116,4 +108,15 @@ A2A_PUBLIC_URL=https://your.public.host
 A2A_PORT=9900
 ```
 
-Catalog submission for the peer plugins is optional; `owner/repo` installs work without it.
+Inbound JWT `aud` resolves from `RoditClient.getConfigOwnRodit().own_rodit.owner_id`.
+`IDENTYCLAW_JWT_AUDIENCE` is an optional fallback only when the passport cannot load.
+
+## Skill
+
+Shipped via `ctx.register_skill("identyclaw", …)` — load with
+`skill_view("identyclaw-auth:identyclaw")`. No separate `hermes skills install`.
+
+## Requirements
+
+- Node.js `>=22.19.0` and `npm` on PATH (or `IDENTYCLAW_NODE_BIN`)
+- Hermes Agent with plugins enabled

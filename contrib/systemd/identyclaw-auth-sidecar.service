@@ -1,0 +1,20 @@
+[Unit]
+Description=IdentyClaw auth sidecar for Hermes (RODiT on localhost)
+Documentation=https://github.com/discernible-io/hermes-identyclaw-auth
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HERMES_HOME=%h/.hermes
+Environment=IDENTYCLAW_HOME=%h/.hermes
+Environment=IDENTYCLAW_AUTH_PORT=9910
+EnvironmentFile=-%h/.hermes/.env
+WorkingDirectory=%h/.hermes/plugins/identyclaw-auth
+ExecStart=/usr/bin/env node bin/sidecar.mjs --port 9910
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target
