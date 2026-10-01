@@ -37,8 +37,8 @@ ENSURE_SESSION = {
 ME = {
     "name": "identyclaw_me",
     "description": (
-        "Return the current Passport identity for the active IdentyClaw session "
-        "(token_id / account metadata). Requires a prior ensure_session."
+        "Return the current Passport identity (token_id / account metadata). "
+        "Lazy-logs in when needed — no prior ensure_session required."
     ),
     "parameters": {
         "type": "object",
