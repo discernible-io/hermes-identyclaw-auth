@@ -54,9 +54,24 @@ def identyclaw_request(args: dict, **kwargs) -> str:
 
 
 def identyclaw_create_hola(args: dict, **kwargs) -> str:
+    recipient = args.get("recipient")
+    if recipient is not None and str(recipient).strip():
+        recipient = str(recipient).strip()
+        # HOLA is slash-delimited; spaces/slashes in recipient yield unverifiable lines.
+        if any(ch.isspace() for ch in recipient) or "/" in recipient:
+            return _dumps(
+                {
+                    "ok": False,
+                    "error": (
+                        "recipient must be MUNDO or a peer token_id with no spaces "
+                        "or slashes (HOLA fields are slash-delimited)"
+                    ),
+                    "recipient": recipient,
+                }
+            )
     argv = ["create_hola"]
-    if args.get("recipient"):
-        argv.extend(["--recipient", str(args["recipient"])])
+    if recipient:
+        argv.extend(["--recipient", recipient])
     if args.get("base"):
         argv.extend(["--base", str(args["base"])])
     return _dumps(node_bridge.run_idcp(argv))

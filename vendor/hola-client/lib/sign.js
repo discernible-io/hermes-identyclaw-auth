@@ -8,9 +8,26 @@ function encodeSignatureBase32(signatureBytes) {
   return base32.encode(Buffer.from(signatureBytes)).replace(/=+$/g, "").toUpperCase();
 }
 
+/**
+ * Normalize HOLA recipient. Defaults empty/missing to MUNDO.
+ * Rejects whitespace and "/" — HOLA is slash-delimited, so spaces produce
+ * lines that look signed but fail verify.
+ *
+ * @param {string} [recipient]
+ * @returns {string}
+ */
 function normalizeRecipient(recipient) {
-  const value = recipient && String(recipient).trim().length > 0 ? recipient : "MUNDO";
-  return String(value).toUpperCase();
+  const trimmed =
+    recipient != null && String(recipient).trim().length > 0
+      ? String(recipient).trim()
+      : "MUNDO";
+  if (/\s/.test(trimmed) || trimmed.includes("/")) {
+    throw new Error(
+      "recipient must be MUNDO or a peer token_id with no spaces or slashes " +
+        `(got ${JSON.stringify(recipient)})`
+    );
+  }
+  return trimmed.toUpperCase();
 }
 
 function normalizeTokenId(tokenId) {

@@ -98,14 +98,19 @@ CREATE_HOLA = {
     "name": "identyclaw_create_hola",
     "description": (
         "Create a HOLA peer-handshake line for MUNDO or a peer token_id. "
-        "Use after a verified inbound HOLA on the same channel."
+        "Use after a verified inbound HOLA on the same channel. "
+        "recipient must be a single token with no spaces (HOLA is slash-delimited)."
     ),
     "parameters": {
         "type": "object",
         "properties": {
             "recipient": {
                 "type": "string",
-                "description": "MUNDO or peer token_id (default MUNDO)",
+                "description": (
+                    "MUNDO or peer token_id (default MUNDO). "
+                    "No spaces or slashes — use the bare Passport token_id only."
+                ),
+                "pattern": "^[^\\s/]+$",
             },
             "base": {
                 "type": "string",
@@ -131,7 +136,11 @@ VERIFY_HOLA = {
             },
             "expected": {
                 "type": "string",
-                "description": "Expected recipient (default MUNDO)",
+                "description": (
+                    "Expected recipient (default MUNDO). "
+                    "Same rules as create_hola: no spaces or slashes."
+                ),
+                "pattern": "^[^\\s/]+$",
             },
             "base": {
                 "type": "string",
