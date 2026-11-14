@@ -113,16 +113,23 @@ export async function apiRequest({
   }
 
   const doFetch = async (token) => {
+    const methodUpper = String(method || "GET").toUpperCase();
     const opts = {
-      method,
+      method: methodUpper,
       headers: {
         authorization: `Bearer ${token}`,
         accept: "application/json",
       },
     };
-    if (body != null) {
+    // Always send JSON Content-Type on mutating methods. Body-less POSTs
+    // (e.g. /api/logout) otherwise get 415 from APIs that require the header.
+    if (body != null || ["POST", "PUT", "PATCH"].includes(methodUpper)) {
       opts.headers["content-type"] = "application/json";
-      opts.body = typeof body === "string" ? body : JSON.stringify(body);
+      if (body != null) {
+        opts.body = typeof body === "string" ? body : JSON.stringify(body);
+      } else {
+        opts.body = "{}";
+      }
     }
     return fetch(`${baseUrl}${path}`, opts);
   };
