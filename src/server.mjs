@@ -4,6 +4,7 @@
  * Routes:
  *   GET  /health
  *   GET  /v1/sessions
+ *   POST /v1/logout           { baseUrl? } → { ok, cleared, baseUrl, remote }
  *   GET  /v1/own_passport     → { ok, owner_id, token_id, issuer, webhook_url }
  *   POST /v1/validate_jwt     { token } → { valid, identity/token_id, … }
  *                               (aud/iss from RoditClient.getConfigOwnRodit)
@@ -26,7 +27,7 @@ import {
   extractWebhookSessionId,
   applyLoginMode,
 } from "./lib/rodit.mjs";
-import { listSessions, ensureSession } from "./lib/session.mjs";
+import { listSessions, ensureSession, logout } from "./lib/session.mjs";
 import { ensureRoditCredentialEnv, defaultBaseUrl } from "./lib/paths.mjs";
 
 const DEFAULT_HOST = "127.0.0.1";
@@ -124,6 +125,14 @@ export function createAuthServer({ host = DEFAULT_HOST, port = DEFAULT_PORT } = 
           credentialsPath: body.credentialsPath || null,
         });
         return sendJson(res, 200, result);
+      }
+
+      if (method === "POST" && path === "/v1/logout") {
+        const body = await readJsonBody(req);
+        const result = await logout({
+          baseUrl: body.baseUrl || defaultBaseUrl(),
+        });
+        return sendJson(res, result.ok ? 200 : 502, result);
       }
 
       if (method === "POST" && path === "/v1/validate_jwt") {

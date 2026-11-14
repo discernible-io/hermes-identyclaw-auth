@@ -56,6 +56,25 @@ ME = {
     },
 }
 
+LOGOUT = {
+    "name": "identyclaw_logout",
+    "description": (
+        "Log out of an IdentyClaw API host: POST /api/logout with the cached "
+        "Bearer JWT, then clear the local session cache. Idempotent when no "
+        "session is cached."
+    ),
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "base": {
+                "type": "string",
+                "description": "API base URL (default https://api.identyclaw.com)",
+            },
+        },
+        "required": [],
+    },
+}
+
 LIST_SESSIONS = {
     "name": "identyclaw_list_sessions",
     "description": (

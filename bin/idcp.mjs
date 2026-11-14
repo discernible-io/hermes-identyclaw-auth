@@ -20,6 +20,7 @@ import {
 } from "../src/lib/paths.mjs";
 import {
   ensureSession,
+  logout,
   listSessions,
   apiRequest,
   me,
@@ -44,6 +45,7 @@ Near credentials: ${nearCredentialsDir()}
 Commands:
   enroll                          Create secrets dirs; run gennearaccount if available
   ensure_session [--force] [--base URL]
+  logout [--base URL]
   list_sessions
   me [--base URL]
   request METHOD /api/path [--body JSON] [--base URL]
@@ -217,6 +219,9 @@ export async function runCli(argv = process.argv.slice(2)) {
             credentialsPath: args.credentials || null,
           })
         );
+        break;
+      case "logout":
+        print(await logout({ baseUrl }));
         break;
       case "list_sessions":
         print(listSessions());

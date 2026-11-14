@@ -50,6 +50,7 @@ Prefer tools (`identyclaw_me`, …) or:
 |----|---------|---------|
 | me | `hermes identyclaw me` | Passport identity (lazy-logs in) |
 | ensure_session | `hermes identyclaw ensure_session [--force] [--base URL]` | advanced: force / federated / debug — metadata only, **never** full JWT |
+| logout | `hermes identyclaw logout [--base URL]` | `POST /api/logout` + clear cached JWT |
 | list_sessions | `hermes identyclaw list_sessions` | cached hosts; no JWTs |
 | request | `hermes identyclaw request METHOD /api/path [--body JSON]` | host injects Bearer |
 | create_hola | `hermes identyclaw create_hola [--recipient MUNDO\|peerTokenId]` | HOLA string; **recipient: no spaces** (bare `token_id` only) |

@@ -231,6 +231,26 @@ export function saveJwt(jwt, baseUrl = defaultBaseUrl(), meta = {}) {
   return p;
 }
 
+/** Drop cached JWT + sessions.json entry for one API host. */
+export function clearJwt(baseUrl = defaultBaseUrl()) {
+  const p = jwtPathFor(baseUrl);
+  let cleared = false;
+  if (fs.existsSync(p)) {
+    fs.unlinkSync(p);
+    cleared = true;
+  }
+  const sessions = loadSessionsMeta();
+  if (Object.prototype.hasOwnProperty.call(sessions, baseUrl)) {
+    delete sessions[baseUrl];
+    cleared = true;
+    ensureSecretsLayout();
+    fs.writeFileSync(sessionsMetaPath(), JSON.stringify(sessions, null, 2) + "\n", {
+      mode: 0o600,
+    });
+  }
+  return { cleared, baseUrl, jwt_path: p };
+}
+
 export function loadSessionsMeta() {
   const p = sessionsMetaPath();
   if (!fs.existsSync(p)) return {};

@@ -29,6 +29,13 @@ def identyclaw_ensure_session(args: dict, **kwargs) -> str:
     return _dumps(node_bridge.run_idcp(argv))
 
 
+def identyclaw_logout(args: dict, **kwargs) -> str:
+    argv = ["logout"]
+    if args.get("base"):
+        argv.extend(["--base", str(args["base"])])
+    return _dumps(node_bridge.run_idcp(argv))
+
+
 def identyclaw_me(args: dict, **kwargs) -> str:
     argv = ["me"]
     if args.get("base"):

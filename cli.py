@@ -33,6 +33,11 @@ def _setup_argparse(subparser) -> None:
     p_ensure.add_argument("--base", default=None, help="API base URL")
     p_ensure.add_argument("--credentials", default=None, help="NEAR credentials JSON path")
 
+    p_logout = subs.add_parser(
+        "logout", help="POST /api/logout then clear cached host login JWT"
+    )
+    p_logout.add_argument("--base", default=None, help="API base URL")
+
     p_me = subs.add_parser("me", help="Show Passport identity for the active session")
     p_me.add_argument("--base", default=None)
 
@@ -76,7 +81,7 @@ def _handle(args) -> None:
     cmd = getattr(args, "identyclaw_cmd", None)
     if not cmd:
         print(
-            "Usage: hermes identyclaw <enroll|ensure_session|me|list_sessions|request|"
+            "Usage: hermes identyclaw <enroll|ensure_session|logout|me|list_sessions|request|"
             "create_hola|verify_hola|install-deps|sidecar|status> …",
             file=sys.stderr,
         )
@@ -139,6 +144,9 @@ def _handle(args) -> None:
             argv.extend(["--base", args.base])
         if getattr(args, "credentials", None):
             argv.extend(["--credentials", args.credentials])
+    elif cmd == "logout":
+        if getattr(args, "base", None):
+            argv.extend(["--base", args.base])
     elif cmd == "me":
         if getattr(args, "base", None):
             argv.extend(["--base", args.base])

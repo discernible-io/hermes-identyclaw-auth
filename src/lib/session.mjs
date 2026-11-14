@@ -3,6 +3,7 @@ import {
   defaultBaseUrl,
   loadNearCredentials,
   saveJwt,
+  clearJwt,
   loadJwt,
   loadSessionsMeta,
   ensureSecretsLayout,
@@ -165,4 +166,59 @@ export function listSessions() {
       updated_at: meta.updated_at || null,
     })),
   };
+}
+
+/**
+ * Invalidate the host-login JWT via POST /api/logout, then drop the local cache.
+ * Skips the remote call when no JWT is cached. Never remints on 401.
+ */
+export async function logout({ baseUrl = defaultBaseUrl() } = {}) {
+  const jwt = loadJwt(baseUrl);
+  let remote = { attempted: false, ok: false, status: null, body: null };
+
+  if (jwt) {
+    remote.attempted = true;
+    try {
+      const res = await fetch(`${baseUrl}/api/logout`, {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${jwt}`,
+          accept: "application/json",
+        },
+      });
+      const text = await res.text();
+      let body = null;
+      try {
+        body = JSON.parse(text);
+      } catch {
+        body = text || null;
+      }
+      remote = {
+        attempted: true,
+        ok: res.ok,
+        status: res.status,
+        body,
+      };
+      if (!res.ok) {
+        throw new Error(
+          `POST /api/logout failed (${res.status}): ${
+            typeof body === "string" ? body : JSON.stringify(body)
+          }`
+        );
+      }
+    } catch (err) {
+      // Still wipe local cache so the client is logged out even if the peer
+      // already dropped the session or is unreachable.
+      const cleared = clearJwt(baseUrl);
+      return {
+        ok: false,
+        ...cleared,
+        remote,
+        error: err?.message || String(err),
+      };
+    }
+  }
+
+  const cleared = clearJwt(baseUrl);
+  return { ok: true, ...cleared, remote };
 }

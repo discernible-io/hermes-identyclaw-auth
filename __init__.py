@@ -44,6 +44,7 @@ def register(ctx) -> None:
     registrations = (
         ("identyclaw_enroll", schemas.ENROLL, tools.identyclaw_enroll),
         ("identyclaw_ensure_session", schemas.ENSURE_SESSION, tools.identyclaw_ensure_session),
+        ("identyclaw_logout", schemas.LOGOUT, tools.identyclaw_logout),
         ("identyclaw_me", schemas.ME, tools.identyclaw_me),
         ("identyclaw_list_sessions", schemas.LIST_SESSIONS, tools.identyclaw_list_sessions),
         ("identyclaw_request", schemas.REQUEST, tools.identyclaw_request),

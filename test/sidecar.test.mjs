@@ -146,3 +146,60 @@ describe("list_sessions never leaks jwt", () => {
     }
   });
 });
+
+describe("logout clears cached jwt", () => {
+  it("POSTs /api/logout then removes jwt file and sessions meta", async () => {
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const fs = await import("node:fs");
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "identyclaw-logout-"));
+    const prevHome = process.env.IDENTYCLAW_HOME;
+    const prevFetch = globalThis.fetch;
+    process.env.IDENTYCLAW_HOME = tmp;
+    try {
+      const { saveJwt, loadJwt, loadSessionsMeta } = await import("../src/lib/paths.mjs");
+      const { logout, listSessions } = await import("../src/lib/session.mjs");
+      const baseUrl = "https://api.example.test";
+      let logoutCalls = 0;
+      globalThis.fetch = async (url, opts = {}) => {
+        assert.equal(String(url), `${baseUrl}/api/logout`);
+        assert.equal(opts.method, "POST");
+        assert.equal(opts.headers.authorization, "Bearer fake.jwt.token");
+        logoutCalls += 1;
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      };
+
+      saveJwt("fake.jwt.token", baseUrl, { tokenId: "t1", accountid: "acct" });
+      assert.ok(loadJwt(baseUrl));
+      assert.ok(loadSessionsMeta()[baseUrl]);
+
+      const out = await logout({ baseUrl });
+      assert.equal(out.ok, true);
+      assert.equal(out.cleared, true);
+      assert.equal(out.remote.attempted, true);
+      assert.equal(out.remote.ok, true);
+      assert.equal(out.remote.status, 200);
+      assert.equal(logoutCalls, 1);
+      assert.equal(loadJwt(baseUrl), null);
+      assert.equal(loadSessionsMeta()[baseUrl], undefined);
+      assert.equal(
+        listSessions().sessions.some((s) => s.baseUrl === baseUrl),
+        false
+      );
+
+      const again = await logout({ baseUrl });
+      assert.equal(again.ok, true);
+      assert.equal(again.cleared, false);
+      assert.equal(again.remote.attempted, false);
+      assert.equal(logoutCalls, 1);
+    } finally {
+      globalThis.fetch = prevFetch;
+      if (prevHome === undefined) delete process.env.IDENTYCLAW_HOME;
+      else process.env.IDENTYCLAW_HOME = prevHome;
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});

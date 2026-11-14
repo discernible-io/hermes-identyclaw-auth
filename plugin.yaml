@@ -14,6 +14,7 @@ tags: [identity, passport, near, rodit, hola, auth, sidecar]
 provides_tools:
   - identyclaw_enroll
   - identyclaw_ensure_session
+  - identyclaw_logout
   - identyclaw_me
   - identyclaw_list_sessions
   - identyclaw_request

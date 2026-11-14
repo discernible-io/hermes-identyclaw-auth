@@ -7,9 +7,10 @@ export {
   defaultBaseUrl,
   loadJwt,
   saveJwt,
+  clearJwt,
   loadSessionsMeta,
 } from "./paths.mjs";
-export { ensureSession, apiRequest, me, listSessions } from "./session.mjs";
+export { ensureSession, logout, apiRequest, me, listSessions } from "./session.mjs";
 export { createHolaLine, verifyHolaLine } from "./hola.mjs";
 export {
   validateInboundJwt,

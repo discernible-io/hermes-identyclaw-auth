@@ -70,6 +70,7 @@ bash "$HERMES_HOME/plugins/identyclaw-auth/scripts/install-stock-hermes.sh" \
 |---------|---------|
 | `hermes identyclaw enroll` | Secrets dirs + NEAR implicit account (also auto-run by install-deps) |
 | `hermes identyclaw ensure_session [--force] [--base URL]` | Host login JWT (metadata only) |
+| `hermes identyclaw logout [--base URL]` | `POST /api/logout` + clear cached JWT |
 | `hermes identyclaw me` | Passport identity |
 | `hermes identyclaw list_sessions` | Cached hosts (no JWTs) |
 | `hermes identyclaw request METHOD /api/path` | Bearer-injected API call |
@@ -89,6 +90,8 @@ NEAR_CREDENTIALS_FILE_PATH=/path/to/near.json node bin/sidecar.mjs --port 9910
 | Method | Path | Purpose |
 |--------|------|---------|
 | GET | `/health` | liveness |
+| GET | `/v1/sessions` | cached session metadata (no JWTs) |
+| POST | `/v1/logout` | peer `POST /api/logout` + clear cached JWT |
 | GET | `/v1/own_passport` | `owner_id` / `token_id` / issuer from RoditClient |
 | POST | `/v1/validate_jwt` | Passport JWT → `token_id` |
 | POST | `/v1/login_server` | outbound peer login |
